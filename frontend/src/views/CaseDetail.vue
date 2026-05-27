@@ -13,28 +13,64 @@
       </button>
     </div>
 
-    <!-- 时间线内容区（标签模式） -->
-    <div v-if="timelineOpen" class="timeline-content">
-      <div v-if="showAddEvent" class="add-event-form">
-        <input v-model="newEventTime" placeholder="时间，如 案发当晚20:00" />
+    <!-- 时间线内容区（时间轴模式） -->
+    <div v-if="timelineOpen" class="timeline-panel">
+      <!-- 添加表单 -->
+      <div class="timeline-form">
+        <div class="datetime-picker">
+          <input type="number" v-model="eventYear" placeholder="年" min="1" max="99999" />
+          <span>-</span>
+          <input type="number" v-model="eventMonth" placeholder="月" min="1" max="12" />
+          <span>-</span>
+          <input type="number" v-model="eventDay" placeholder="日" min="1" max="31" />
+          <span>&nbsp;</span>
+          <input type="number" v-model="eventHour" placeholder="时" min="0" max="23" />
+          <span>:</span>
+          <input type="number" v-model="eventMinute" placeholder="分" min="0" max="59" />
+        </div>
         <input v-model="newEventDesc" placeholder="事件描述" @keyup.enter="addTimelineEvent" />
-        <button @click="addTimelineEvent" :disabled="!newEventTime.trim() || !newEventDesc.trim()">
-          添加
-        </button>
+        <button @click="addTimelineEvent">添加</button>
       </div>
 
-      <div v-if="timelineEvents.length" class="event-list">
-        <div v-for="event in timelineEvents" :key="event.id" class="event-item">
-          <button class="move-btn" @click="moveEvent(event.id, 'up')" title="上移">▲</button>
-          <button class="move-btn" @click="moveEvent(event.id, 'down')" title="下移">▼</button>
-          <span class="event-time">{{ event.event_time }}</span>
-          <span class="event-desc">{{ event.description }}</span>
-          <button class="delete-event-btn" @click="handleDeleteEvent(event.id)">✕</button>
+      <!-- 时间轴 -->
+      <div class="timeline-axis" ref="timelineAxis" @click="closeAllPopups">
+        <div class="axis-line"></div>
+        
+        <div
+          v-for="(event, idx) in sortedEvents"
+          :key="event.id"
+          class="timeline-dot-wrapper"
+          :style="{ left: getDotPosition(event, sortedEvents) + '%' }"
+        >
+          <div
+            class="timeline-dot"
+            @mouseenter="showPopup(event)"
+            @mouseleave="onDotMouseLeave(event)"
+            @click.stop="lockPopup(event)"
+          >
+            <div class="dot"></div>
+            <span class="dot-time">{{ formatEventTime(event.event_time) }}</span>
+          </div>
+
+          <!-- 悬停/锁定弹出详情 -->
+          <div
+            v-if="hoveredEvent?.id === event.id || lockedEvents.has(event.id)"
+            class="event-popup"
+            :class="{ 'popup-left': getDotPosition(event, sortedEvents) < 20, 'popup-right': getDotPosition(event, sortedEvents) > 80 }"
+            @mouseenter="onPopupMouseEnter(event)"
+            @mouseleave="onPopupMouseLeave(event)"
+            @click.stop
+          >
+            <div class="popup-header">
+              <strong>{{ event.event_time }}</strong>
+              <button class="popup-close-btn" @click="closePopup(event)">✕</button>
+            </div>
+            <p>{{ event.description }}</p>
+            <button class="popup-delete-btn" @click="handleDeleteEvent(event.id)">删除事件</button>
+          </div>
         </div>
       </div>
-      <p v-else class="empty-hint">暂无时间线事件，点击上方按钮添加</p>
     </div>
-
     <!-- 主区域 -->
     <div class="main-area">
       <!-- 便签墙画布 -->
@@ -95,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick ,computed} from 'vue'
 import { VueFlow } from '@vue-flow/core'
 import NoteNode from '@/components/NoteNode.vue'
 import {
@@ -130,8 +166,18 @@ const centerPoint = { x: 400, y: 300 }
 const timelineOpen = ref(false)
 const showAddEvent = ref(false)
 const timelineEvents = ref<any[]>([])
-const newEventTime = ref('')
+
+// 添加表单
+const eventYear = ref(new Date().getFullYear())
+const eventMonth = ref(1)
+const eventDay = ref(1)
+const eventHour = ref(0)
+const eventMinute = ref(0)
 const newEventDesc = ref('')
+
+// 弹出框状态
+const hoveredEvent = ref<any>(null)
+const lockedEvents = ref<Set<number>>(new Set())  // 用 Set 存 id，支持多个同时锁定的事件（点击后）
 
 function goToCenter() {
   vueFlowRef.value?.setCenter(centerPoint.x, centerPoint.y, { zoom: 1 })
@@ -144,6 +190,87 @@ onMounted(async () => {
   await nextTick()
   goToCenter()
 })
+
+
+// 排序
+const sortedEvents = computed(() => {
+  return [...timelineEvents.value].sort((a, b) => a.event_time.localeCompare(b.event_time))
+})
+
+function formatEventTime(eventTime: string) {
+  if (!eventTime) return ''
+  const match = eventTime.match(/(\d+)年(\d+)月(\d+)日/)
+  if (match) {
+    return `${match[2]}/${match[3]}`
+  }
+  return eventTime
+}
+
+function getDotPosition(event: any, events: any[]) {
+  if (events.length <= 1) return 50
+  const sorted = [...events].sort((a, b) => a.event_time.localeCompare(b.event_time))
+  const firstTime = parseEventTime(sorted[0].event_time)
+  const lastTime = parseEventTime(sorted[sorted.length - 1].event_time)
+  const range = lastTime - firstTime || 1
+  const eventTime = parseEventTime(event.event_time)
+  return ((eventTime - firstTime) / range) * 100
+}
+
+function parseEventTime(str: string): number {
+  const match = str.match(/(\d+)年(\d+)月(\d+)日\s(\d+):(\d+)/)
+  if (!match) return 0
+  return new Date(+match[1], +match[2] - 1, +match[3], +match[4], +match[5]).getTime()
+}
+
+
+// 弹出框控制
+function showPopup(event: any) {
+  if (!lockedEvents.value.has(event.id)) {
+    hoveredEvent.value = event
+  }
+}
+
+function onDotMouseLeave(event: any) {
+  if (!lockedEvents.value.has(event.id)) {
+    hoveredEvent.value = null
+  }
+}
+
+function onPopupMouseEnter(event: any) {
+  hoveredEvent.value = event
+}
+
+function onPopupMouseLeave(event: any) {
+  if (!lockedEvents.value.has(event.id)) {
+    hoveredEvent.value = null
+  }
+}
+
+function lockPopup(event: any) {
+  const newSet = new Set(lockedEvents.value)
+  if (newSet.has(event.id)) {
+    newSet.delete(event.id)
+  } else {
+    newSet.add(event.id)
+  }
+  lockedEvents.value = newSet
+  hoveredEvent.value = event
+}
+
+function closePopup(event: any) {
+  const newSet = new Set(lockedEvents.value)
+  newSet.delete(event.id)
+  lockedEvents.value = newSet
+  hoveredEvent.value = null
+}
+
+function closeAllPopups() {
+  lockedEvents.value = new Set()
+  hoveredEvent.value = null
+}
+
+
+
 
 async function loadNotes() {
   try {
@@ -288,14 +415,15 @@ async function deleteSelectedNode() {
 }
 
 async function addTimelineEvent() {
-  if (!newEventTime.value.trim() || !newEventDesc.value.trim()) return
+  if (!newEventDesc.value.trim()) return
+  const eventTimeStr = `${eventYear.value}年${eventMonth.value}月${eventDay.value}日 ${String(eventHour.value).padStart(2, '0')}:${String(eventMinute.value).padStart(2, '0')}`
+  
   try {
     await createTimelineEvent(caseId, {
-      event_time: newEventTime.value.trim(),
+      event_time: eventTimeStr,
       description: newEventDesc.value.trim(),
       source: 'manual',
     })
-    newEventTime.value = ''
     newEventDesc.value = ''
     showAddEvent.value = false
     await loadTimelineEvents()
@@ -304,18 +432,13 @@ async function addTimelineEvent() {
   }
 }
 
-async function moveEvent(eventId: number, direction: string) {
-  try {
-    await moveTimelineEvent(caseId, eventId, direction)
-    await loadTimelineEvents()
-  } catch (err) {
-    console.error('移动事件失败', err)
-  }
-}
-
 async function handleDeleteEvent(eventId: number) {
   try {
     await deleteTimelineEventApi(caseId, eventId)
+    const newSet = new Set(lockedEvents.value)
+    newSet.delete(eventId)
+    lockedEvents.value = newSet
+    hoveredEvent.value = null
     await loadTimelineEvents()
   } catch (err) {
     console.error('删除事件失败', err)
@@ -342,83 +465,180 @@ async function handleDeleteEvent(eventId: number) {
   flex-shrink: 0;
 }
 
-/* 时间线内容 */
-.timeline-content {
-  max-height: 200px;
-  overflow-y: auto;
-  border-bottom: 1px solid #ccc;
+/* 时间线面板 */
+.timeline-panel {
   background: #fafafa;
-  padding: 8px 16px;
+  border-bottom: 1px solid #ddd;
+  padding: 8px 20px;
+  max-height: 140px;
+  overflow: visible;
 }
-.add-event-form {
+.timeline-form {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 8px;
   flex-wrap: wrap;
-}
-.add-event-form input {
-  flex: 1;
-  min-width: 120px;
-  padding: 4px 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-.add-event-form button {
-  padding: 4px 12px;
-  background: #e8f5e9;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.event-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.event-item {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 4px 10px;
+}
+.datetime-picker {
+  display: flex;
+  gap: 1px;
+  align-items: center;
   font-size: 13px;
 }
-.event-time {
-  font-weight: bold;
-  color: #555;
-  white-space: nowrap;
-}
-.event-desc {
-  color: #333;
-}
-.move-btn {
-  background: none;
-  border: 1px solid #ddd;
-  border-radius: 2px;
-  font-size: 10px;
-  padding: 0 2px;
-  cursor: pointer;
-  color: #888;
-  line-height: 1;
-}
-.move-btn:hover {
-  color: #333;
-  border-color: #999;
-}
-.delete-event-btn {
-  background: none;
-  border: none;
-  color: #c62828;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 0 2px;
-}
-.empty-hint {
-  color: #999;
+.datetime-picker input {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
   text-align: center;
   font-size: 13px;
+}
+.timeline-form input[type="text"] {
+  flex: 1;
+  min-width: 120px;
+  padding: 2px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 13px;
+}
+.timeline-form button {
+  padding: 2px 12px;
+  background: #e8f5e9;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+/* 时间轴 */
+.timeline-axis {
+  position: relative;
+  height: 50px;
+  margin: 0 30px;
+}
+.axis-line {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #bbb;
+}
+.timeline-dot-wrapper {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 2;
+}
+.timeline-dot {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.dot {
+  width: 12px;
+  height: 12px;
+  background: #555;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px #555;
+  transition: transform 0.2s, background 0.2s;
+}
+.dot:hover {
+  transform: scale(1.3);
+  background: #333;
+}
+.dot-time {
+  font-size: 9px;
+  color: #888;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* 弹出详情框（在圆点下方） */
+.event-popup {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  width: 200px;
+  z-index: 30;
+  pointer-events: auto;
+}
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.popup-header strong {
+  font-size: 12px;
+  color: #333;
+}
+.popup-close-btn {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+}
+.popup-close-btn:hover {
+  color: #333;
+}
+.event-popup p {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #555;
+}
+.popup-delete-btn {
+  margin-top: 4px;
+  padding: 2px 10px;
+  background: #ffebee;
+  border: 1px solid #e0c0c0;
+  border-radius: 4px;
+  color: #c62828;
+  cursor: pointer;
+  font-size: 12px;
+}
+.popup-delete-btn:hover {
+  background: #ffcdd2;
+}
+
+/* 弹出详情框（在圆点下方） */
+.event-popup {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  width: 200px;
+  z-index: 30;
+  pointer-events: auto;
+}
+/* 左侧：靠左对齐 */
+.event-popup.popup-left {
+  left: 0;
+  transform: translateX(0);
+}
+/* 右侧：靠右对齐 */
+.event-popup.popup-right {
+  left: auto;
+  right: 0;
+  transform: translateX(0);
 }
 
 /* 主区域 */

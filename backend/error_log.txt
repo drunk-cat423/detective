@@ -1,0 +1,107 @@
+URL: http://127.0.0.1:8001/cases/
+Traceback (most recent call last):
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\middleware\base.py", line 159, in call_next
+    message = await recv_stream.receive()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\anyio\streams\memory.py", line 132, in receive
+    raise EndOfStream from None
+anyio.EndOfStream
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "F:\detective-assistant\backend\app\main.py", line 17, in catch_all_errors
+    response = await call_next(request)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\middleware\base.py", line 165, in call_next
+    raise app_exc
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\middleware\base.py", line 151, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\middleware\exceptions.py", line 65, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\_exception_handler.py", line 64, in wrapped_app
+    raise exc
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    await app(scope, receive, sender)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\routing.py", line 756, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\routing.py", line 776, in app
+    await route.handle(scope, receive, send)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\routing.py", line 297, in handle
+    await self.app(scope, receive, send)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\routing.py", line 77, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\_exception_handler.py", line 64, in wrapped_app
+    raise exc
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    await app(scope, receive, sender)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\starlette\routing.py", line 72, in app
+    response = await func(request)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\fastapi\routing.py", line 278, in app
+    raw_response = await run_endpoint_function(
+  File "F:\anaconda_real\envs\detective\lib\site-packages\fastapi\routing.py", line 191, in run_endpoint_function
+    return await dependant.call(**values)
+  File "F:\detective-assistant\backend\app\api\cases.py", line 23, in list_cases
+    result = await db.execute(select(Case))
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 461, in execute
+    result = await greenlet_spawn(
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\orm\session.py", line 2226, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\orm\session.py", line 2095, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\engine\base.py", line 3276, in connect
+    return self._connection_cls(self)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\engine\base.py", line 3300, in raw_connection
+    return self.pool.connect()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\base.py", line 1263, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\base.py", line 712, in checkout
+    rec = pool._do_get()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\impl.py", line 179, in _do_get
+    with util.safe_reraise():
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    return self._create_connection()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\base.py", line 674, in __init__
+    self.__connect()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\base.py", line 900, in __connect
+    with util.safe_reraise():
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\pool\base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\engine\create.py", line 643, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\engine\default.py", line 620, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\dialects\mysql\aiomysql.py", line 267, in connect
+    await_only(creator_fn(*arg, **kw)),
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 131, in await_only
+    return current.driver.switch(awaitable)  # type: ignore[no-any-return]
+  File "F:\anaconda_real\envs\detective\lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "F:\anaconda_real\envs\detective\lib\site-packages\aiomysql\connection.py", line 75, in _connect
+    await conn._connect()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\aiomysql\connection.py", line 540, in _connect
+    await self._request_authentication()
+  File "F:\anaconda_real\envs\detective\lib\site-packages\aiomysql\connection.py", line 865, in _request_authentication
+    await self.caching_sha2_password_auth(auth_packet)
+  File "F:\anaconda_real\envs\detective\lib\site-packages\aiomysql\connection.py", line 984, in caching_sha2_password_auth
+    data = _auth.sha2_rsa_encrypt(
+  File "F:\anaconda_real\envs\detective\lib\site-packages\pymysql\_auth.py", line 144, in sha2_rsa_encrypt
+    raise RuntimeError(
+RuntimeError: 'cryptography' package is required for sha256_password or caching_sha2_password auth methods
