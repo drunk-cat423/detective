@@ -18,15 +18,15 @@
       <!-- 添加表单 -->
       <div class="timeline-form">
         <div class="datetime-picker">
-          <input type="number" v-model="eventYear" placeholder="年" min="1" max="99999" />
+          <input type="number" v-model="eventYear" placeholder="年" min="1" @change="fixDate" />
           <span>-</span>
-          <input type="number" v-model="eventMonth" placeholder="月" min="1" max="12" />
+          <input type="number" v-model="eventMonth" placeholder="月" min="1" max="12" @change="fixDate" />
           <span>-</span>
-          <input type="number" v-model="eventDay" placeholder="日" min="1" max="31" />
+          <input type="number" v-model="eventDay" placeholder="日" min="1" max="31" @change="fixDate" />
           <span>&nbsp;</span>
-          <input type="number" v-model="eventHour" placeholder="时" min="0" max="23" />
+          <input type="number" v-model="eventHour" placeholder="时" min="0" max="23" @change="fixTime" />
           <span>:</span>
-          <input type="number" v-model="eventMinute" placeholder="分" min="0" max="59" />
+          <input type="number" v-model="eventMinute" placeholder="分" min="0" max="59" @change="fixTime" />
         </div>
         <input v-model="newEventDesc" placeholder="事件描述" @keyup.enter="addTimelineEvent" />
         <button @click="addTimelineEvent">添加</button>
@@ -41,7 +41,7 @@
           :key="event.id"
           class="timeline-dot-wrapper"
           :style="{ left: getDotPosition(event, sortedEvents) + '%' }"
-        >
+        > 
           <div
             class="timeline-dot"
             @mouseenter="showPopup(event)"
@@ -52,7 +52,6 @@
             <span class="dot-time">{{ formatEventTime(event.event_time) }}</span>
           </div>
 
-          <!-- 悬停/锁定弹出详情 -->
           <div
             v-if="hoveredEvent?.id === event.id || lockedEvents.has(event.id)"
             class="event-popup"
@@ -139,7 +138,6 @@ import {
   getConnections, createConnection,
   getTimelineEvents, createTimelineEvent,
   deleteTimelineEvent as deleteTimelineEventApi,
-  moveTimelineEvent,
 } from '@/api/index'
 
 import '@vue-flow/core/dist/style.css'
@@ -192,9 +190,35 @@ onMounted(async () => {
 })
 
 
+
+
+
+// 修正日期
+function fixDate() {
+  // 月份限制在 1-12
+  if (eventMonth.value < 1) eventMonth.value = 1
+  if (eventMonth.value > 12) eventMonth.value = 12
+  
+  // 根据月份和年份计算最大天数
+  const daysInMonth = new Date(eventYear.value, eventMonth.value, 0).getDate()
+  if (eventDay.value < 1) eventDay.value = 1
+  if (eventDay.value > daysInMonth) eventDay.value = daysInMonth
+}
+
+// 修正时间
+function fixTime() {
+  if (eventHour.value < 0) eventHour.value = 0
+  if (eventHour.value > 23) eventHour.value = 23
+  if (eventMinute.value < 0) eventMinute.value = 0
+  if (eventMinute.value > 59) eventMinute.value = 59
+}
+
+
 // 排序
 const sortedEvents = computed(() => {
-  return [...timelineEvents.value].sort((a, b) => a.event_time.localeCompare(b.event_time))
+  return [...timelineEvents.value].sort((a, b) => {
+    return parseEventTime(a.event_time) - parseEventTime(b.event_time)
+  })
 })
 
 function formatEventTime(eventTime: string) {
@@ -208,12 +232,35 @@ function formatEventTime(eventTime: string) {
 
 function getDotPosition(event: any, events: any[]) {
   if (events.length <= 1) return 50
-  const sorted = [...events].sort((a, b) => a.event_time.localeCompare(b.event_time))
+
+  const sorted = [...events].sort((a, b) => parseEventTime(a.event_time) - parseEventTime(b.event_time))
   const firstTime = parseEventTime(sorted[0].event_time)
   const lastTime = parseEventTime(sorted[sorted.length - 1].event_time)
-  const range = lastTime - firstTime || 1
-  const eventTime = parseEventTime(event.event_time)
-  return ((eventTime - firstTime) / range) * 100
+  const totalRange = lastTime - firstTime || 1
+
+  // 计算所有事件的理想百分比
+  const items = sorted.map(e => ({
+    id: e.id,
+    ideal: ((parseEventTime(e.event_time) - firstTime) / totalRange) * 100,
+  }))
+
+  // 只从左到右推，保证最小间距
+  const minSpacing = 5
+  for (let i = 1; i < items.length; i++) {
+    const gap = items[i].ideal - items[i - 1].ideal
+    if (gap < minSpacing) {
+      items[i].ideal = items[i - 1].ideal + minSpacing
+    }
+  }
+
+  // 如果最右边的点超出了 98%，整体压缩
+  const maxIdeal = items[items.length - 1].ideal
+  const scale = maxIdeal > 98 ? 98 / maxIdeal : 1
+
+  const item = items.find(a => a.id === event.id)
+  if (!item) return 50
+
+  return Math.max(2, item.ideal * scale)
 }
 
 function parseEventTime(str: string): number {
