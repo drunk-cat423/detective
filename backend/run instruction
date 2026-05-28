@@ -2,3 +2,7 @@ uvicorn app.main:app --reload
 
 
 uvicorn app.main:app --reload --port 8001
+
+netstat -ano | findstr :8001
+
+taskkill /F /PID 数字
