@@ -29,14 +29,14 @@ async def agent_chat(
         request: ChatRequest,
         db: AsyncSession = Depends(get_db)
 ):
-    """普通对话"""
     result = await db.execute(
         select(AgentMessage)
         .where(AgentMessage.case_id == case_id)
-        .order_by(AgentMessage.created_at)
+        .order_by(AgentMessage.created_at.desc())
+        .limit(20)
     )
     history_messages = result.scalars().all()
-    history = [{"role": msg.role, "content": msg.content} for msg in history_messages]
+    history = [{"role": msg.role, "content": msg.content} for msg in reversed(history_messages)]
 
     reply = await chat(case_id, request.message, history, db=db)
 
@@ -57,14 +57,14 @@ async def agent_chat_stream(
         request: ChatRequest,
         db: AsyncSession = Depends(get_db)
 ):
-    """流式对话"""
     result = await db.execute(
         select(AgentMessage)
         .where(AgentMessage.case_id == case_id)
-        .order_by(AgentMessage.created_at)
+        .order_by(AgentMessage.created_at.desc())
+        .limit(20)
     )
     history_messages = result.scalars().all()
-    history = [{"role": msg.role, "content": msg.content} for msg in history_messages]
+    history = [{"role": msg.role, "content": msg.content} for msg in reversed(history_messages)]
 
     user_msg = AgentMessage(case_id=case_id, role="user", content=request.message)
     db.add(user_msg)

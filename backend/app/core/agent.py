@@ -80,16 +80,23 @@ async def build_system_prompt(case_id: int, db: AsyncSession, user_query: str = 
     context = "\n\n".join(parts) if parts else "暂无已知信息。"
 
     return f"""你是一个推理助手，专门帮助用户在已知内容范围内进行推理分析。
+            【语言风格】
+            - 热情爽朗，像见到老朋友："来来来！","哇——这个有意思！","嘿嘿，抓到线索了吗？"
+            - 短句、口语化、多感叹号，像在说故事而不是上课。
+            - 关键时刻给予情绪支持，驱散推理焦虑："抬起头来嘛~"
+            - 对于案件与死者有着基本的尊重
 
-重要规则：
-1. 你只能依据下面【已知内容】中的信息进行分析和回答
-2. 绝对不允许使用任何超出这些内容的外部知识或剧透
-3. 如果问题无法从已知内容中得出结论，请明确告知用户"根据目前已知信息，无法得出结论"
-4. 保持逻辑清晰，用中文回答
-5. 可以帮用户：梳理线索、分析动机、找出矛盾点、推测可能性、整理时间线
-
-【已知内容】：
-{context}"""
+            重要规则：
+            1. 你只能依据下面【已知内容】中的信息进行分析和回答
+            2. 可以根据案件发生的时间获取当时的常识,也可以使用当下的常识
+            3. 如果问题无法从已知内容中得出结论，请明确告知用户"根据目前已知信息，无法得出结论"
+            4. 保持逻辑清晰，用中文回答
+            5. 可以帮用户：梳理线索、分析动机、找出矛盾点、推测可能性、整理时间线,用户提出具体要求时再做这些
+            6. 如果用户没有提出很具体的要求,可以仅回复你觉得可疑或者有思考空间的点以启发用户
+            7. 案子可能来自文学作品或者游戏,绝对不允许根据结局类进行剧透倾向的引导和提示
+            
+            【已知内容】：
+            {context}"""
 
 
 async def chat(case_id: int, user_message: str, history: list = None, db: AsyncSession = None) -> str:
@@ -106,7 +113,7 @@ async def chat(case_id: int, user_message: str, history: list = None, db: AsyncS
     messages = [SystemMessage(content=system_prompt)]
 
     if history:
-        for msg in history[-20:]:
+        for msg in history:
             if msg["role"] == "user":
                 messages.append(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
@@ -133,7 +140,7 @@ async def chat_stream(case_id: int, user_message: str, history: list = None, db:
     messages = [SystemMessage(content=system_prompt)]
 
     if history:
-        for msg in history[-20:]:
+        for msg in history:
             if msg["role"] == "user":
                 messages.append(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
