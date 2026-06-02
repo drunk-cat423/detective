@@ -33,6 +33,7 @@ async def create_note(case_id: int, note: NoteCreate, db: AsyncSession = Depends
         width=note.width,
         height=note.height,
         color=note.color,
+        name=note.name,
     )
     db.add(new_note)
     await db.commit()

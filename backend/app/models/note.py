@@ -19,3 +19,4 @@ class Note(Base):
     height = Column(Float, default=100)
     color = Column(String(20), default="#FFF9C4")
     created_at = Column(DateTime, server_default=func.now())
+    name = Column(String(100), nullable=True)  # 嫌疑人名字，线索可留空

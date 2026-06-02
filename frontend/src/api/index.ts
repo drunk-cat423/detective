@@ -52,3 +52,13 @@ export const deleteTimelineEvent = (caseId: number, eventId: number) =>
 
 export const moveTimelineEvent = (caseId: number, eventId: number, direction: string) =>
   api.put(`/cases/${caseId}/timeline/${eventId}/move`, null, { params: { direction } })
+
+// ========== Agent 对话 API ==========
+export const getAgentHistory = (caseId: number) =>
+  api.get(`/cases/${caseId}/agent/history`)
+
+export const sendAgentMessage = (caseId: number, message: string) =>
+  api.post(`/cases/${caseId}/agent/chat`, { message })
+
+export const clearAgentHistory = (caseId: number) =>
+  api.delete(`/cases/${caseId}/agent/history`)

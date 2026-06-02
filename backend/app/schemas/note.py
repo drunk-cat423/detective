@@ -12,6 +12,7 @@ class NoteCreate(BaseModel):
     width: float = 200
     height: float = 100
     color: str = "#FFF9C4"
+    name: Optional[str] = None
 
 class NoteUpdate(BaseModel):
     type: Optional[str] = None
@@ -21,6 +22,7 @@ class NoteUpdate(BaseModel):
     width: Optional[float] = None
     height: Optional[float] = None
     color: Optional[str] = None
+    name:Optional[str] = None
 
 # 返回给前端的便签数据
 class NoteOut(BaseModel):
@@ -34,6 +36,7 @@ class NoteOut(BaseModel):
     height: float
     color: str
     created_at: datetime
+    name: Optional[str] = None
 
     class Config:
         from_attributes = True  # 让 Pydantic 能读取 SQLAlchemy 对象

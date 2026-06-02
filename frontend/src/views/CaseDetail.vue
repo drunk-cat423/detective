@@ -102,13 +102,31 @@
           <button class="toggle-panel-btn" @click="panelOpen = !panelOpen">
             {{ panelOpen ? '▶' : '◀' }}
           </button>
-          <h3 v-show="panelOpen">工具面板</h3>
+          <div v-show="panelOpen" class="tab-buttons">
+            <button
+              :class="{ active: activeTab === 'edit' }"
+              @click="activeTab = 'edit'"
+            >编辑</button>
+            <button
+              :class="{ active: activeTab === 'chat' }"
+              @click="activeTab = 'chat'"
+            >对话</button>
+          </div>
         </div>
 
-        <div v-show="panelOpen" class="panel-content">
+        <!-- 编辑 Tab -->
+        <div v-show="panelOpen && activeTab === 'edit'" class="panel-content">
           <div v-if="selectedNode">
             <p><strong>编辑便签</strong></p>
-            <textarea v-model="selectedNode.data.content" rows="4" style="width:100%"></textarea>
+            <textarea v-model="selectedNode.data.content" rows="4"></textarea>
+            <div v-if="selectedNode.data.type === 'suspect'" class="edit-field">
+  <label>嫌疑人名字</label>
+  <input
+    v-model="selectedNode.data.name"
+    placeholder="输入名字"
+    style="width:100%; padding:4px; border:1px solid #ccc; border-radius:4px;"
+  />
+            </div>
             <div class="color-picker">
               <div
                 v-for="c in presetColors"
@@ -124,13 +142,45 @@
           </div>
           <p v-else>点击便签进行编辑</p>
         </div>
+
+
+        <!-- 对话 Tab -->
+        <div v-show="panelOpen && activeTab === 'chat'" class="panel-content chat-panel">
+          <div class="chat-messages" ref="chatMessages">
+            <div v-if="chatHistory.length === 0" class="chat-empty">
+              💬 开始和 Agent 对话吧
+            </div>
+            <div
+              v-for="(msg, idx) in chatHistory"
+              :key="idx"
+              :class="['chat-msg', msg.role]"
+            >
+              <img
+                :src="msg.role === 'user' ? userAvatar : agentAvatar"
+                :class="['avatar', msg.role]"
+                @error="onAvatarError"
+              />
+              <div class="msg-bubble" v-html="renderMarkdown(msg.content)"></div>
+            </div>
+          </div>
+          <div class="chat-input">
+            <input
+              v-model="chatInput"
+              placeholder="输入消息..."
+              @keyup.enter="sendMessage"
+              :disabled="chatLoading"
+            />
+            <button @click="sendMessage" :disabled="chatLoading || !chatInput.trim()">发送</button>
+            <button @click="clearChat" :disabled="chatHistory.length === 0">清空</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick ,computed} from 'vue'
+import { ref, onMounted, nextTick ,computed, watch,reactive} from 'vue'
 import { VueFlow } from '@vue-flow/core'
 import NoteNode from '@/components/NoteNode.vue'
 import {
@@ -142,6 +192,8 @@ import {
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
+import { getAgentHistory, clearAgentHistory } from '@/api/index'
+import { marked } from 'marked'
 
 const props = defineProps<{ id: string }>()
 const caseId = Number(props.id)
@@ -181,15 +233,141 @@ function goToCenter() {
   vueFlowRef.value?.setCenter(centerPoint.x, centerPoint.y, { zoom: 1 })
 }
 
+// 侧边栏 Tab
+const activeTab = ref<'edit' | 'chat'>('edit')
+
+// 对话相关
+const chatHistory = ref<{ role: string; content: string }[]>([])
+const chatInput = ref('')
+const chatLoading = ref(false)
+const chatMessages = ref<HTMLElement | null>(null)
+
+//用户头像
+const userAvatar = ref('/avatar-user.png')
+//agent头像
+const agentAvatar = ref('/avatar-agent.png')
+
+
+// 自动滚动到底部
+watch(chatHistory, () => {
+  nextTick(() => {
+    if (chatMessages.value) {
+      chatMessages.value.scrollTop = chatMessages.value.scrollHeight
+    }
+  })
+}, { deep: true })
+
+
+
+
+
 onMounted(async () => {
   await loadNotes()
   await loadConnections()
   await loadTimelineEvents()
+  await loadChatHistory()
   await nextTick()
   goToCenter()
 })
 
+//头像相关
+function onAvatarError(e: Event) {
+  const img = e.target as HTMLImageElement
+  img.style.display = 'none'
+  // 可替换为默认占位背景
+}
 
+//markdown 相关
+function renderMarkdown(text: string) {
+  if (!text) return ''
+  return marked(text)
+}
+
+// 加载对话历史
+async function loadChatHistory() {
+  try {
+    const res = await getAgentHistory(caseId)
+    chatHistory.value = res.data.map((m: any) => ({
+      role: m.role,
+      content: m.content,
+    }))
+  } catch (err) {
+    console.error('加载对话历史失败', err)
+  }
+}
+
+//发送信息
+async function sendMessage() {
+  const msg = chatInput.value.trim()
+  if (!msg || chatLoading.value) return
+
+  chatInput.value = ''
+  chatHistory.value.push({ role: 'user', content: msg })
+  chatLoading.value = true
+
+  const assistantMsg = reactive({ role: 'assistant', content: '' })
+  chatHistory.value.push(assistantMsg)
+  
+  await nextTick()
+  scrollToBottom()
+
+  try {
+    const response = await fetch(`http://127.0.0.1:8001/cases/${caseId}/agent/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    })
+
+    if (!response.ok) throw new Error('Request failed')
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('No reader')
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') continue
+          assistantMsg.content += data
+          await nextTick()
+          scrollToBottom()
+        }
+      }
+    }
+  } catch (err) {
+    console.error('流式对话失败', err)
+    if (!assistantMsg.content) assistantMsg.content = '抱歉，请求失败，请稍后重试。'
+  } finally {
+    chatLoading.value = false
+    await loadChatHistory()
+  }
+}
+
+function scrollToBottom() {
+  if (chatMessages.value) {
+    chatMessages.value.scrollTop = chatMessages.value.scrollHeight
+  }
+}
+
+
+// 清空对话
+async function clearChat() {
+  if (!confirm('确定要清空所有对话历史吗？')) return
+  try {
+    await clearAgentHistory(caseId)
+    chatHistory.value = []
+  } catch (err) {
+    console.error('清空对话失败', err)
+  }
+}
 
 
 
@@ -317,16 +495,20 @@ function closeAllPopups() {
 }
 
 
-
-
 async function loadNotes() {
   try {
     const res = await getNotes(caseId)
-    nodes.value = res.data.map((n: any) => ({
+    const serverNotes = res.data
+    nodes.value = serverNotes.map((n: any) => ({
       id: String(n.id),
       type: 'note',
       position: { x: n.pos_x, y: n.pos_y },
-      data: { content: n.content, type: n.type, color: n.color },
+      data: {
+        content: n.content,
+        type: n.type,
+        color: n.color,
+        name: n.name || '',          // ← 这一行必须有
+      },
       style: { width: `${n.width}px`, height: `${n.height}px` },
     }))
   } catch (err) {
@@ -358,12 +540,17 @@ async function loadTimelineEvents() {
 }
 
 async function addNote(type: string) {
-  const colors: Record<string, string> = { clue: '#FFF9C4', suspect: '#FFCCBC' }
+  const defaultColors: Record<string, string> = {
+    clue: '#FFF9C4',
+    suspect: '#FFCCBC',
+  }
+  const defaultName = type === 'suspect' ? '未知' : ''
   try {
     const res = await createNote(caseId, {
       type,
       content: type === 'clue' ? '新线索' : '新嫌疑人',
-      color: colors[type],
+      name: defaultName,
+      color: defaultColors[type],
       pos_x: Math.random() * 400,
       pos_y: Math.random() * 300,
       width: 200,
@@ -373,7 +560,12 @@ async function addNote(type: string) {
       id: String(res.data.id),
       type: 'note',
       position: { x: res.data.pos_x, y: res.data.pos_y },
-      data: { content: res.data.content, type: res.data.type, color: res.data.color },
+      data: {
+        content: res.data.content,
+        type: res.data.type,
+        name: res.data.name || '',
+        color: res.data.color,
+      },
       style: { width: `${res.data.width}px`, height: `${res.data.height}px` },
     })
   } catch (err) {
@@ -436,12 +628,19 @@ function deselectNode() {
 
 async function saveSelectedNode() {
   if (!selectedNode.value) return
+  const n = selectedNode.value
   try {
-    await updateNote(caseId, Number(selectedNode.value.id), {
-      content: selectedNode.value.data.content,
-      type: selectedNode.value.data.type,
-      color: selectedNode.value.data.color,
+    await updateNote(caseId, Number(n.id), {
+      content: n.data.content,
+      type: n.data.type,
+      color: n.data.color,
+      name: n.data.name || '',
     })
+    // 同步更新本地节点数据，保存后立即显示名字
+    const idx = nodes.value.findIndex(node => node.id === n.id)
+    if (idx !== -1) {
+      nodes.value[idx].data = { ...n.data }
+    }
     alert('保存成功')
   } catch (err) {
     console.error('保存便签失败', err)
@@ -742,7 +941,7 @@ async function handleDeleteEvent(eventId: number) {
 
 /* 右侧面板 */
 .side-panel {
-  width: 300px;
+  width: 380px;
   border-left: 1px solid #ccc;
   background: #fff;
   overflow-y: auto;
@@ -816,5 +1015,148 @@ textarea {
 }
 .color-swatch:hover {
   border-color: #999;
+}
+
+/* 对话 Tab */
+.tab-buttons {
+  display: flex;
+  gap: 4px;
+}
+.tab-buttons button {
+  padding: 4px 12px;
+  background: #eee;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.tab-buttons button.active {
+  background: #fff;
+  border-bottom: 2px solid #4a90d9;
+  font-weight: bold;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0 !important;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  background: #f9f9f9;
+}
+
+.chat-empty {
+  color: #aaa;
+  text-align: center;
+  margin-top: 60px;
+  font-size: 14px;
+}
+
+/* 消息行 */
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px;
+}
+
+.chat-msg.user {
+  align-items: flex-end;
+}
+.chat-msg.assistant {
+  align-items: flex-start;
+}
+
+/* 头像 */
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 4px;
+  background: #e0e0e0;   /* 默认占位底色 */
+  display: block;
+}
+
+/* 当图片加载失败时保持占位 */
+.avatar[src=""], .avatar:not([src]) {
+  background: #e0e0e0;
+}
+
+/* 气泡 */
+.msg-bubble {
+  max-width: 90%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.chat-msg.user .msg-bubble {
+  background: #e3f2fd;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-msg.assistant .msg-bubble {
+  background: white;
+  border-bottom-left-radius: 4px;
+  border: 1px solid #eee;
+}
+
+/* Markdown 内容样式 */
+.msg-bubble :deep(p) {
+  margin: 0 0 4px;
+}
+.msg-bubble :deep(ul), .msg-bubble :deep(ol) {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+.msg-bubble :deep(code) {
+  background: rgba(0,0,0,0.05);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+.msg-bubble :deep(pre) {
+  background: #f5f5f5;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+/* 输入区 */
+.chat-input {
+  border-top: 1px solid #eee;
+  padding: 8px;
+  display: flex;
+  gap: 4px;
+  background: white;
+}
+.chat-input input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.chat-input button {
+  padding: 6px 12px;
+  background: #e8f5e9;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.chat-input button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
