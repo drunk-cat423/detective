@@ -1,5 +1,6 @@
 <template>
   <div class="case-detail">
+
     <!-- 顶部时间线 -->
     <div class="timeline-bar">
       <span
@@ -12,6 +13,7 @@
         {{ showAddEvent ? '取消' : '添加事件' }}
       </button>
     </div>
+
 
     <!-- 时间线内容区（时间轴模式） -->
     <div v-if="timelineOpen" class="timeline-panel">
@@ -70,6 +72,9 @@
         </div>
       </div>
     </div>
+
+
+    
     <!-- 主区域 -->
     <div class="main-area">
       <!-- 便签墙画布 -->
@@ -88,7 +93,9 @@
           fit-view-on-init
         >
         </VueFlow>
-        <button class="center-btn" @click="goToCenter" title="回到中心">🏠</button>
+        <button class="center-btn" @click="goToCenter" title="回到中心">
+          <img src="/home.png" alt="回到中心" class="center-icon" />
+        </button>
         <!-- 添加便签按钮 -->
         <div class="add-note-bar">
           <button @click="addNote('clue')">+ 添加线索</button>
@@ -117,16 +124,17 @@
         <!-- 编辑 Tab -->
         <div v-show="panelOpen && activeTab === 'edit'" class="panel-content">
           <div v-if="selectedNode">
+            <div v-if="selectedNode.data.type === 'suspect'" class="edit-field">
+            <label>嫌疑人名字</label>
+            <input
+              v-model="selectedNode.data.name"
+              placeholder="请输入名字"
+              style="width:100%; padding:4px; border:1px solid #ccc; border-radius:4px;"
+            />
+            </div>
             <p><strong>编辑便签</strong></p>
             <textarea v-model="selectedNode.data.content" rows="4"></textarea>
-            <div v-if="selectedNode.data.type === 'suspect'" class="edit-field">
-  <label>嫌疑人名字</label>
-  <input
-    v-model="selectedNode.data.name"
-    placeholder="输入名字"
-    style="width:100%; padding:4px; border:1px solid #ccc; border-radius:4px;"
-  />
-            </div>
+            
             <div class="color-picker">
               <div
                 v-for="c in presetColors"
@@ -148,7 +156,7 @@
         <div v-show="panelOpen && activeTab === 'chat'" class="panel-content chat-panel">
           <div class="chat-messages" ref="chatMessages">
             <div v-if="chatHistory.length === 0" class="chat-empty">
-              💬 开始和 Agent 对话吧
+              💬 和助手小姐聊聊吧
             </div>
             <div
               v-for="(msg, idx) in chatHistory"
@@ -158,9 +166,11 @@
               <img
                 :src="msg.role === 'user' ? userAvatar : agentAvatar"
                 :class="['avatar', msg.role]"
-                @error="onAvatarError"
               />
-              <div class="msg-bubble" v-html="renderMarkdown(msg.content)"></div>
+              <!-- 用户消息：纯文本 -->
+              <div v-if="msg.role === 'user'" class="msg-bubble">{{ msg.content }}</div>
+              <!-- Agent 消息：Markdown 渲染 -->
+              <div v-else class="msg-bubble" v-html="renderMarkdown(msg.content)"></div>
             </div>
           </div>
           <div class="chat-input">
@@ -171,7 +181,8 @@
               :disabled="chatLoading"
             />
             <button @click="sendMessage" :disabled="chatLoading || !chatInput.trim()">发送</button>
-            <button @click="clearChat" :disabled="chatHistory.length === 0">清空</button>
+            <button @click="clearScreen" :disabled="chatHistory.length === 0">清屏</button>
+            <button @click="resetMemory" :disabled="chatHistory.length === 0" class="reset-btn">重置</button>
           </div>
         </div>
       </div>
@@ -194,6 +205,7 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import { getAgentHistory, clearAgentHistory } from '@/api/index'
 import { marked } from 'marked'
+import DOMPurify  from 'dompurify'
 
 const props = defineProps<{ id: string }>()
 const caseId = Number(props.id)
@@ -257,7 +269,13 @@ watch(chatHistory, () => {
   })
 }, { deep: true })
 
-
+// 当展开有板块时自动滚动到底部
+watch([activeTab, panelOpen], async ([tab, open]) => {
+  if (tab === 'chat' && open) {
+    await nextTick()
+    scrollToBottom()
+  }
+})
 
 
 
@@ -266,21 +284,18 @@ onMounted(async () => {
   await loadConnections()
   await loadTimelineEvents()
   await loadChatHistory()
+
   await nextTick()
   goToCenter()
 })
 
-//头像相关
-function onAvatarError(e: Event) {
-  const img = e.target as HTMLImageElement
-  img.style.display = 'none'
-  // 可替换为默认占位背景
-}
+
 
 //markdown 相关
 function renderMarkdown(text: string) {
   if (!text) return ''
-  return marked(text)
+  const rawHtml = marked(text) as string
+  return DOMPurify.sanitize(rawHtml)
 }
 
 // 加载对话历史
@@ -358,17 +373,22 @@ function scrollToBottom() {
 }
 
 
+// 软清空：只清界面，不调后端
+function clearScreen() {
+  chatHistory.value = []
+}
+
+
 // 清空对话
-async function clearChat() {
-  if (!confirm('确定要清空所有对话历史吗？')) return
+async function resetMemory() {
+  if (!confirm('确定要重置吗?这将消除助手小姐关于本案的所有记忆,重新开始.')) return
   try {
     await clearAgentHistory(caseId)
     chatHistory.value = []
   } catch (err) {
-    console.error('清空对话失败', err)
+    console.error('重置记忆失败', err)
   }
 }
-
 
 
 // 修正日期
@@ -580,6 +600,8 @@ async function onConnect(connection: any) {
     e.sourceHandle === sourceHandle && e.targetHandle === targetHandle
   )) return
 
+  if (source === target) return
+
   try {
     const res = await createConnection(caseId, {
       from_note_id: Number(source),
@@ -620,6 +642,8 @@ function onEdgesChange() {}
 
 function selectNode({ node }: { node: any }) {
   selectedNode.value = node
+  panelOpen.value = true
+  activeTab.value = 'edit'
 }
 
 function deselectNode() {
@@ -927,16 +951,27 @@ async function handleDeleteEvent(eventId: number) {
   border-radius: 50%;
   border: 1px solid #ccc;
   background: white;
-  font-size: 20px;
+  /* font-size: 20px; */
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   transition: background 0.2s;
+
+  line-height: 0;
+  padding: 0;
 }
 .center-btn:hover {
   background: #f0f0f0;
+}
+
+.center-icon {
+  width: 28px;
+  height: 28px;
+  display: block;
+  /* 如果用 SVG，颜色会继承文字颜色 */
+  color: #333;
 }
 
 /* 右侧面板 */
@@ -946,10 +981,11 @@ async function handleDeleteEvent(eventId: number) {
   background: #fff;
   overflow-y: auto;
   position: relative;
-  transition: width 0.3s;
+  transition: width 0.3s ease;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .side-panel.collapsed {
   width: 40px;
@@ -1090,6 +1126,7 @@ textarea {
 /* 气泡 */
 .msg-bubble {
   max-width: 90%;
+  min-width: 60px;
   padding: 8px 12px;
   border-radius: 12px;
   font-size: 14px;
@@ -1156,6 +1193,20 @@ textarea {
   white-space: nowrap;
 }
 .chat-input button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 重置按钮 */
+.reset-btn {
+  background: #ffebee;
+  color: #c62828;
+  border-color: #e0c0c0;
+}
+.reset-btn:hover {
+  background: #ffcdd2;
+}
+.reset-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

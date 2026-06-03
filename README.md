@@ -133,7 +133,7 @@ detective-assistant/
 - 便签位置、尺寸、颜色自动保存
 - 便签间拖拽连线（上下两个美化 Handle）
 - 连线自动保存，删除便签时自动清理关联连线
-- 右下角 🏠 按钮：一键回到画布中心点
+- 右下角按钮：一键回到画布中心点
 
 ### 右侧工具面板
 - 可折叠/展开（宽度 380px，折叠后 40px）
@@ -206,6 +206,6 @@ detective-assistant/
 
 1. 确保 MySQL 运行，数据库 `detective_db` 已创建
 2. `.env` 已配置 `DASHSCOPE_API_KEY`
-3. `cd backend && uvicorn app.main:app --reload --port 8000`
+3. `cd backend && uvicorn app.main:app --reload --port 8001`
 4. `cd frontend && npm run dev`
 5. 浏览器打开 `http://localhost:5173`
