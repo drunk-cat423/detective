@@ -62,3 +62,5 @@ export const sendAgentMessage = (caseId: number, message: string) =>
 
 export const clearAgentHistory = (caseId: number) =>
   api.delete(`/cases/${caseId}/agent/history`)
+
+export const deleteCaseApi = (id: number) => api.delete(`/cases/${id}`)

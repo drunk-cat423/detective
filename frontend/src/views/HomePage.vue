@@ -25,6 +25,7 @@
         <h3>{{ c.name }}</h3>
         <p v-if="c.description">{{ c.description }}</p>
         <span class="time">{{ new Date(c.created_at).toLocaleString() }}</span>
+        <button class="delete-case-btn" @click.stop="handleDelete(c.id)">删除</button>
       </div>
     </div>
     <p v-else>暂无案件，请创建一个吧</p>
@@ -33,7 +34,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getCases, createCase } from '@/api/index'
+import { getCases, createCase ,deleteCaseApi} from '@/api/index'
 
 const cases = ref<any[]>([])        // 案件列表
 const newCaseName = ref('')         // 输入框内容
@@ -55,6 +56,17 @@ const handleCreate = async () => {
     await fetchCases()
   } catch (err) {
     console.error('创建案件失败', err)
+  }
+}
+
+
+async function handleDelete(id: number) {
+  if (!confirm('确定要删除该案件吗？所有便签、连线、时间线、对话历史将被永久删除。')) return
+  try {
+    await deleteCaseApi(id)
+    await fetchCases()
+  } catch (err) {
+    console.error('删除案件失败', err)
   }
 }
 
@@ -92,6 +104,7 @@ onMounted(fetchCases)
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.2s;
+  position: relative;
 }
 .case-card:hover {
   background: #f5f5f5;
@@ -99,5 +112,21 @@ onMounted(fetchCases)
 .time {
   color: #999;
   font-size: 12px;
+}
+
+.delete-case-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #ffebee;
+  border: 1px solid #e0c0c0;
+  color: #c62828;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.delete-case-btn:hover {
+  background: #ffcdd2;
 }
 </style>

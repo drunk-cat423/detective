@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session
 from app.models.case import Case
@@ -22,3 +22,15 @@ async def create_case(name: str, description: str | None = None, db: AsyncSessio
 async def list_cases(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Case))
     return result.scalars().all()
+
+@router.delete("/{case_id}",status_code=204)
+async  def delete_case(case_id:int,db:AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Case).where(Case.id == case_id)
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="案件不存在")
+    await db.delete(case)
+    await db.commit()
+    return None

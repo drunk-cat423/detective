@@ -3,14 +3,14 @@
 
     <!-- 顶部时间线 -->
     <div class="timeline-bar">
-      <span
-        @click="timelineOpen = !timelineOpen"
-        style="cursor:pointer;user-select: none;"
-      >
-        ⏳ 时间线 {{ timelineOpen ? '▲' : '▼' }}
-      </span>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <router-link to="/" class="back-btn">🏠︎</router-link>
+        <span @click="timelineOpen = !timelineOpen" style="cursor:pointer;user-select:none;">
+          ⏳ 时间线 {{ timelineOpen ? '▲' : '▼' }}
+        </span>
+      </div>
       <button v-if="timelineOpen" @click="showAddEvent = !showAddEvent">
-        {{ showAddEvent ? '取消' : '添加事件' }}
+        {{ showAddEvent ? '取消' : '+ 添加事件' }}
       </button>
     </div>
 
@@ -735,6 +735,19 @@ async function handleDeleteEvent(eventId: number) {
   flex-shrink: 0;
 }
 
+/* 返回按钮 */
+.back-btn {
+  color: #555;
+  text-decoration: none;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+.back-btn:hover {
+  background: #e0e0e0;
+}
+
 /* 时间线面板 */
 .timeline-panel {
   background: #fafafa;
@@ -780,6 +793,7 @@ async function handleDeleteEvent(eventId: number) {
   cursor: pointer;
   font-size: 13px;
 }
+
 
 /* 时间轴 */
 .timeline-axis {
