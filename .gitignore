@@ -1,17 +1,21 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+            # 忽略真实环境变量
+# .env.example    # 这个建议保留，不要忽略
 .env
+
+# 数据库
 *.db
-
-
+*.sqlite3
+*.sqlite3-journal
 
 # IDE
 .idea/
 .vscode/
 
-
 # Chroma 向量数据库
 backend/chroma_data/
 *.bin
-*.sqlite3
