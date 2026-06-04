@@ -118,6 +118,10 @@
               :class="{ active: activeTab === 'chat' }"
               @click="activeTab = 'chat'"
             >对话</button>
+            <button
+            :class ="{ active: activeTab === 'docs'}"
+            @click = "activeTab ='docs'"
+            >文档</button>
           </div>
         </div>
 
@@ -185,6 +189,28 @@
             <button @click="resetMemory" :disabled="chatHistory.length === 0" class="reset-btn">重置</button>
           </div>
         </div>
+
+        <!-- 文档 Tab  -->
+         <div v-show ="panelOpen && activeTab === 'docs'" class = "panel-content">
+          <div class = "upload-area"
+              @dragover.prevent
+              @drag.prevent = "handleDrop"
+              @click = "triggerFileInput">
+              <input type="file" ref = "fileInput" accept = ".txt" style = "display: none" @change = "handleFileSelect"/>
+              <p>📂 拖拽或点击上传</p>
+              <p style = "font-size:12px;color:#999;">支持utf-8编码</p>
+          </div>
+          <div v-if ="uploading" class = "upload-progress">上传中...</div>
+          <div v-if ="docList.length >0" class = "doc-list">
+            <h4>已上传文档</h4>
+            <ul>
+              <li v-for = "doc in docList" :key = "doc.id">
+                {{ doc.filename }} ({{ doc.chunk_count }})块
+              </li>
+            </ul>
+          </div>
+
+         </div>
       </div>
     </div>
   </div>
@@ -206,6 +232,7 @@ import '@vue-flow/core/dist/theme-default.css'
 import { getAgentHistory, clearAgentHistory } from '@/api/index'
 import { marked } from 'marked'
 import DOMPurify  from 'dompurify'
+import { uploadDocument,getDocument } from '@/api/index'
 
 const props = defineProps<{ id: string }>()
 const caseId = Number(props.id)
@@ -246,7 +273,7 @@ function goToCenter() {
 }
 
 // 侧边栏 Tab
-const activeTab = ref<'edit' | 'chat'>('edit')
+const activeTab = ref<'edit' | 'chat' | 'docs'>('edit')
 
 // 对话相关
 const chatHistory = ref<{ role: string; content: string }[]>([])
@@ -258,6 +285,11 @@ const chatMessages = ref<HTMLElement | null>(null)
 const userAvatar = ref('/avatar-user.png')
 //agent头像
 const agentAvatar = ref('/avatar-agent.png')
+
+//文档上传相关
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref<any>(false)
+const docList = ref<any[]>([])
 
 
 // 自动滚动到底部
@@ -284,7 +316,7 @@ onMounted(async () => {
   await loadConnections()
   await loadTimelineEvents()
   await loadChatHistory()
-
+  await loadDocuments()
   await nextTick()
   goToCenter()
 })
@@ -366,6 +398,7 @@ async function sendMessage() {
   }
 }
 
+//回到聊天底部
 function scrollToBottom() {
   if (chatMessages.value) {
     chatMessages.value.scrollTop = chatMessages.value.scrollHeight
@@ -419,6 +452,7 @@ const sortedEvents = computed(() => {
   })
 })
 
+//规范时间
 function formatEventTime(eventTime: string) {
   if (!eventTime) return ''
   const match = eventTime.match(/(\d+)年(\d+)月(\d+)日/)
@@ -428,6 +462,7 @@ function formatEventTime(eventTime: string) {
   return eventTime
 }
 
+//获取时间点在时间轴上的位置
 function getDotPosition(event: any, events: any[]) {
   if (events.length <= 1) return 50
 
@@ -460,6 +495,7 @@ function getDotPosition(event: any, events: any[]) {
 
   return Math.max(2, item.ideal * scale)
 }
+
 
 function parseEventTime(str: string): number {
   const match = str.match(/(\d+)年(\d+)月(\d+)日\s(\d+):(\d+)/)
@@ -514,6 +550,8 @@ function closeAllPopups() {
   hoveredEvent.value = null
 }
 
+
+//加载
 
 async function loadNotes() {
   try {
@@ -702,6 +740,7 @@ async function addTimelineEvent() {
   }
 }
 
+//删除时间点事件
 async function handleDeleteEvent(eventId: number) {
   try {
     await deleteTimelineEventApi(caseId, eventId)
@@ -714,6 +753,60 @@ async function handleDeleteEvent(eventId: number) {
     console.error('删除事件失败', err)
   }
 }
+
+//文档相关
+async function loadDocuments(){
+  try{
+    const res = await getDocument(caseId)
+    docList.value = res.data
+  }catch(err) {
+    console.error('加载文档列表失败',err)
+  }
+}
+
+//<input type="file" ref="fileInput" style="display: none;" @change="handleUpload" />
+//模板中由上面那句 意思是将原有的文件上传按钮隐藏,因为他们往往位置不固定
+//这个函数就是当用户点击我们设计好的区域时,自动模拟点击了原生上传按钮
+function triggerFileInput(){
+  fileInput.value?.click()
+}
+
+//当用户将文件加载进上传框时,拿到这个上传框元素,进而拿到文件将其上传
+async function handleFileSelect(event:Event){
+  const input = event.target as HTMLInputElement
+  if (input.files &&input.files.length){
+    await uploadDocFile(input.files[0])
+    input.value = ""
+  }
+
+}
+
+//拖拽添加文件时,拿到拖拽文件 将其上传
+async function handleDrop(event:DragEvent){
+  const files = event.dataTransfer?.files
+  if(files && files.length){
+    await uploadDocFile(files[0])
+  }
+}
+
+async function uploadDocFile(file:File){
+  if(!file.name.endsWith('.txt')){
+    alert('抱歉,目前只支持txt文件')
+    return 
+  }
+  uploading.value = true
+  try{
+    await uploadDocument(caseId,file)
+    await loadDocuments()
+    alert('上传成功')
+  }catch(err:any){
+    console.error('上传失败',err)
+    alert(err.response?.data?.detail || '上传失败')
+  }finally{
+    uploading.value = false
+  }
+}
+
 </script>
 
 <style scoped>
@@ -1223,5 +1316,31 @@ textarea {
 .reset-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 上传文档相关 */
+.upload-area {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 16px;
+  transition: background 0.2s;
+}
+.upload-area:hover {
+  background: #f9f9f9;
+  border-color: #999;
+}
+.doc-list ul {
+  padding-left: 20px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.upload-progress {
+  color: #666;
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-align: center;
 }
 </style>

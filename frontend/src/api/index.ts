@@ -64,3 +64,14 @@ export const clearAgentHistory = (caseId: number) =>
   api.delete(`/cases/${caseId}/agent/history`)
 
 export const deleteCaseApi = (id: number) => api.delete(`/cases/${id}`)
+
+export const uploadDocument = (caseId:number,file:File) =>{
+  const formData = new FormData()
+  formData.append('file',file)
+  return api.post(`/cases/${caseId}/documents/upload`,formData,{
+    headers:{'Content-Type':'multipart/form-data'}
+  })
+}
+
+export const getDocument = (caseId:number) =>
+  api.get(`/cases/${caseId}/documents/`)

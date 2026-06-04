@@ -1,15 +1,11 @@
-import asyncio
-from app.database import async_session
-from app.models.timeline_event import TimelineEvent
+import os
+from langchain_openai import OpenAIEmbeddings
 
-async def test():
-    async with async_session() as session:
-        from sqlalchemy import select
-        try:
-            result = await session.execute(select(TimelineEvent).where(TimelineEvent.case_id == 1))
-            print("查询成功:", result.scalars().all())
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-
-asyncio.run(test())
+os.environ["DASHSCOPE_API_KEY"] = "sk-3c2dc9a133674ff1839247da5c2a1dde"  # 或从环境变量读取
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-v4",
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    api_key=os.getenv("DASHSCOPE_API_KEY"),
+)
+vec = embeddings.embed_documents(["测试文本"])
+print(vec)

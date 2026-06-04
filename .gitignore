@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .env
 *.db
+.env.example
+
 
 # IDE
 .idea/

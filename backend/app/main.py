@@ -26,6 +26,9 @@ app.include_router(timeline_router)
 from app.api.agent import router as agent_router
 app.include_router(agent_router)
 
+from app.api.documents import router as documents_router
+app.include_router(documents_router)
+
 @app.get("/")
 async def root():
     return {"message": "Detective Assistant Backend v2"}
