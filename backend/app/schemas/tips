@@ -1,0 +1,12 @@
+schemas文件夹里的文件有一点需要注意
+拿known_infos为例,里面有一个类是这样的:
+
+class KnownInfoCreate(BaseModel):
+    content: str
+
+注意类里面的变量名是centent
+那么前端对应的api中:
+export const createKnownInfo = (caseId:number,content:string) =>
+  api.post(`/cases/${caseId}/known-infos/`,{content})
+
+ 花括号{}里的变量名必须也是content

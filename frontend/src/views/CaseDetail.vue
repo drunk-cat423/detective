@@ -122,6 +122,10 @@
             :class ="{ active: activeTab === 'docs'}"
             @click = "activeTab ='docs'"
             >文档</button>
+            <button
+            :class ="{ active: activeTab === 'info'}"
+            @click = "activeTab ='info'"
+            >已知信息</button>
           </div>
         </div>
 
@@ -211,6 +215,39 @@
           </div>
 
          </div>
+
+        <!-- 已知信息tab -->
+        <div v-show = "panelOpen && activeTab === 'info'" class ="panel-content">
+          <div class ="known-info-form">
+            <textarea v-model ="newInfoContent"
+            placeholder="请输入信息"
+            rows ="3">
+            </textarea>
+          </div>
+          <div>
+            <button class ="known-info-button" @click ="addKnownInfo" :disabled="!newInfoContent.trim()">添加</button>
+          </div>
+          <div class="info-hint">💡 提示：双击列表中的信息可直接编辑</div>
+          <div v-if ="getKnownInfos.length ===0" class ="empty-info">
+            暂无已知信息
+          </div>
+          <ul v-else class ="known-info-list">
+            <li v-for ="info in knownInfos" :key ="info.id">
+              <span @dblclick="startEditInfo(info)" class ="info-content">
+                <template v-if ="editingId === info.id">
+                  <textarea v-model ="editInfoContent" rows="2" @blur ="saveEditInfo(info)" @keyup.enter ="saveEditInfo(info)"></textarea>
+                
+                </template>
+                <template v-else>
+                  {{ info.content }}
+                </template>
+              </span>
+              <div class ="info-actions">
+                <button @click ="deleteKnownInfoItem(info.id)" class = "delete-btn">🗑️</button>
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
@@ -233,6 +270,7 @@ import { getAgentHistory, clearAgentHistory } from '@/api/index'
 import { marked } from 'marked'
 import DOMPurify  from 'dompurify'
 import { uploadDocument,getDocument } from '@/api/index'
+import { getKnownInfos,createKnownInfo,updateKnownInfo,deleteKnownInfo } from '@/api/index'
 
 const props = defineProps<{ id: string }>()
 const caseId = Number(props.id)
@@ -256,7 +294,7 @@ const timelineOpen = ref(false)
 const showAddEvent = ref(false)
 const timelineEvents = ref<any[]>([])
 
-// 添加表单
+// 添加时间线表单
 const eventYear = ref(new Date().getFullYear())
 const eventMonth = ref(1)
 const eventDay = ref(1)
@@ -273,7 +311,7 @@ function goToCenter() {
 }
 
 // 侧边栏 Tab
-const activeTab = ref<'edit' | 'chat' | 'docs'>('edit')
+const activeTab = ref<'edit' | 'chat' | 'docs' |'info'>('edit')
 
 // 对话相关
 const chatHistory = ref<{ role: string; content: string }[]>([])
@@ -291,6 +329,11 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref<any>(false)
 const docList = ref<any[]>([])
 
+//已知信息相关
+const knownInfos = ref<any[]>([])
+const newInfoContent = ref('')
+const editingId = ref<number | null>(null)
+const editInfoContent = ref('')
 
 // 自动滚动到底部
 watch(chatHistory, () => {
@@ -317,6 +360,7 @@ onMounted(async () => {
   await loadTimelineEvents()
   await loadChatHistory()
   await loadDocuments()
+  await loadKnownInfos()
   await nextTick()
   goToCenter()
 })
@@ -765,7 +809,7 @@ async function loadDocuments(){
 }
 
 //<input type="file" ref="fileInput" style="display: none;" @change="handleUpload" />
-//模板中由上面那句 意思是将原有的文件上传按钮隐藏,因为他们往往位置不固定
+//模板中有上面那句 意思是将原有的文件上传按钮隐藏,因为他们往往位置不固定
 //这个函数就是当用户点击我们设计好的区域时,自动模拟点击了原生上传按钮
 function triggerFileInput(){
   fileInput.value?.click()
@@ -804,6 +848,60 @@ async function uploadDocFile(file:File){
     alert(err.response?.data?.detail || '上传失败')
   }finally{
     uploading.value = false
+  }
+}
+
+//已知信息相关
+async function loadKnownInfos(){
+  try{
+    const res = await getKnownInfos(caseId)
+    knownInfos.value = res.data
+
+  }catch(err){
+    console.error('加载已知信息失败',err)
+  }
+
+}
+
+async function addKnownInfo(){
+  const content = newInfoContent.value.trim()
+  if (!content) return
+  try {
+    await createKnownInfo(caseId,content)
+    newInfoContent.value = ''
+    await loadKnownInfos()
+  }catch(err){
+    console.error('添加失败',err)
+  }
+}
+
+function startEditInfo(info:any){
+  editingId.value = info.id
+  editInfoContent.value = info.content
+}
+
+async function saveEditInfo(info:any){
+  if(!editingId.value) return
+  const newContent = editInfoContent.value.trim()
+  if (newContent && newContent !== info.content){
+    try{
+      await updateKnownInfo(caseId,info.id,newContent)
+      await loadKnownInfos()
+    }catch(err){
+      console.error('更新失败',err)
+    }
+  }
+  editingId.value = null
+  editInfoContent.value = ''
+}
+
+async function deleteKnownInfoItem(infoId:number){
+  if(!confirm('确定删除该条信息吗')) return
+  try {
+    await deleteKnownInfo(caseId,infoId)
+    await loadKnownInfos()
+  }catch(err){
+    console.error('删除失败',err)
   }
 }
 
@@ -1342,5 +1440,96 @@ textarea {
   font-size: 12px;
   margin-bottom: 8px;
   text-align: center;
+}
+
+
+/* 已知信息板块 */
+.known-info-form {
+  margin-bottom : 12px;
+}
+
+.known-info-form textarea {
+  width: 96%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size : 13px;
+  resize: none;
+  box-sizing: border-box;
+  margin-left:10px;
+  margin-top:3px;
+}
+
+.known-info-button{
+
+  padding:4px;
+  background:#e8f5e9;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left:10px;
+  margin-bottom:10px;
+}
+
+.info-hint {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 14px;   /* 加大与列表的间距 */
+  padding-left: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.known-info-list {
+  list-style:none;
+  padding:8px;
+  margin:0;
+
+}
+
+.known-info-list li {
+  background: #f4f4f4;
+  margin-bottom:8px;
+  padding: 8px;
+  border-radius:4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-content {
+  flex:1;
+  cursor:pointer;
+  word-break:break-word;
+
+}
+
+.info-content textarea {
+  width:100%;
+  padding: 4px;
+  font-size : 12px;
+  border :1px solid #ccc;
+  border-radius:4px;
+  resize: none;
+}
+
+.info-actions button {
+  background: none;
+  border:none;
+  cursor:pointer;
+  font-size: 16px;
+  padding:0 4px;
+  opacity: 0.6;
+}
+
+.info-action button:hover {
+  opacity: 1;
+}
+.empty-info {
+  color:#999;
+  text-align:center;
+  padding: 20px;
+
 }
 </style>

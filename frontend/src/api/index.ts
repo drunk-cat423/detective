@@ -75,3 +75,16 @@ export const uploadDocument = (caseId:number,file:File) =>{
 
 export const getDocument = (caseId:number) =>
   api.get(`/cases/${caseId}/documents/`)
+
+//已知信息相关api
+export const getKnownInfos = (caseId:number) =>
+  api.get(`/cases/${caseId}/known-infos`)
+
+export const createKnownInfo = (caseId:number,content:string) =>
+  api.post(`/cases/${caseId}/known-infos`,{content})
+
+export const updateKnownInfo = (caseId:number,infoId:number,content:string) =>
+  api.put(`/cases/${caseId}/known-infos/${infoId}`,{content})
+
+export const deleteKnownInfo = (caseId:number,infoId:number) =>
+  api.delete(`/cases/${caseId}/known-infos/${infoId}`)

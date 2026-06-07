@@ -6,3 +6,6 @@ uvicorn app.main:app --reload --port 8001
 netstat -ano | findstr :8001
 
 taskkill /F /PID 数字
+
+如果上一句不管用 直接删掉python进程
+taskkill /F /IM python.exe
