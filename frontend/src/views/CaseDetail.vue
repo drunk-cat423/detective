@@ -91,15 +91,34 @@
           @pane-click="deselectNode"
           :default-viewport="{ zoom: 1, x: 0, y: 0 }"
           fit-view-on-init
+          @edge-double-click = "onEdgeDoubleClick"
+          :default-edge-options="defaultEdgeOptions"
+
         >
-        </VueFlow>
+      </VueFlow>
+        <!-- 连线备注浮动工具栏 -->
+        <div v-if="editingEdgeForLabel" class="edge-edit-toolbar" :style="{ left: editEdgePosition.x + 'px', top: editEdgePosition.y + 'px' }" @click.stop>
+          <div class="edge-edit-input-wrapper">
+            <input
+              ref="edgeEditInput"
+              v-model="editEdgeLabelText"
+              type="text"
+              placeholder="输入备注..."
+              @keyup.enter="saveEdgeLabelEdit"
+              @blur="saveEdgeLabelEdit"
+              @click.stop
+              autofocus
+            />
+          </div>
+          <button class="edge-delete-btn" @mousedown.stop.prevent="deleteCurrentEdge" title="删除连线">🗑️</button>
+        </div>
         <button class="center-btn" @click="goToCenter" title="回到中心">
           <img src="/home.png" alt="回到中心" class="center-icon" />
         </button>
         <!-- 添加便签按钮 -->
         <div class="add-note-bar">
-          <button @click="addNote('clue')">+ 添加线索</button>
-          <button @click="addNote('suspect')">+ 添加嫌疑人</button>
+          <button @click="addNote('clue')"> 添加线索 </button>
+          <button @click="addNote('suspect')"> 添加嫌疑人 </button>
         </div>
       </div>
 
@@ -255,13 +274,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick ,computed, watch,reactive} from 'vue'
-import { VueFlow } from '@vue-flow/core'
+import { VueFlow} from '@vue-flow/core'
 import NoteNode from '@/components/NoteNode.vue'
 import {
   getNotes, createNote, updateNote, deleteNote,
   getConnections, createConnection,
-  getTimelineEvents, createTimelineEvent,
-  deleteTimelineEvent as deleteTimelineEventApi,
+  getTimelineEvents, createTimelineEvent,updateConnection,deleteConnection,
+  deleteTimelineEvent as deleteTimelineEventApi
 } from '@/api/index'
 
 import '@vue-flow/core/dist/style.css'
@@ -271,6 +290,7 @@ import { marked } from 'marked'
 import DOMPurify  from 'dompurify'
 import { uploadDocument,getDocument } from '@/api/index'
 import { getKnownInfos,createKnownInfo,updateKnownInfo,deleteKnownInfo } from '@/api/index'
+
 
 const props = defineProps<{ id: string }>()
 const caseId = Number(props.id)
@@ -334,6 +354,27 @@ const knownInfos = ref<any[]>([])
 const newInfoContent = ref('')
 const editingId = ref<number | null>(null)
 const editInfoContent = ref('')
+
+//连线备注相关
+// 连线备注浮动编辑框
+const editingEdgeForLabel = ref<any>(null)        // 当前编辑的边对象
+const editEdgeLabelText = ref('')                 // 临时备注文本
+const editEdgePosition = ref({ x: 0, y: 0 })      // 输入框坐标
+const edgeEditInput = ref<HTMLInputElement | null>(null)
+// 默认边的样式配置（包括标签字体大小）
+const defaultEdgeOptions = {
+  labelStyle: {
+    fontSize: '18px',      // 你想放大的字号
+    fontWeight: 'bold',
+    fill: '#333',          // 文字颜色
+  },
+  style: {
+    stroke: '#b1b1b7',     // 连线颜色
+    strokeWidth: 2,
+  },
+}
+
+
 
 // 自动滚动到底部
 watch(chatHistory, () => {
@@ -905,6 +946,79 @@ async function deleteKnownInfoItem(infoId:number){
   }
 }
 
+
+// 连线相关
+
+
+function onEdgeDoubleClick(params: any) {
+  const { edge, event } = params
+  event.stopPropagation()
+  
+  // 直接用鼠标坐标
+  editingEdgeForLabel.value = edge
+  editEdgeLabelText.value = edge.label || ''
+  editEdgePosition.value = { x: event.clientX, y: event.clientY }
+  
+  nextTick(() => {
+    edgeEditInput.value?.focus()
+  })
+}
+
+async function saveEdgeLabelEdit() {
+  if (!editingEdgeForLabel.value) return
+  const edge = editingEdgeForLabel.value
+  const newLabel = editEdgeLabelText.value.trim()
+  const oldLabel = edge.label || ''
+  
+  if (newLabel !== oldLabel) {
+    try {
+      await updateConnection(caseId, parseInt(edge.id), { label: newLabel })
+      // 更新本地 edges 数据
+      const targetEdge = edges.value.find(e => e.id === edge.id)
+      if (targetEdge) targetEdge.label = newLabel
+    } catch (err) {
+      console.error('保存连线备注失败', err)
+      alert('保存失败，请重试')
+    }
+  }
+  // 关闭浮窗
+  editingEdgeForLabel.value = null
+  editEdgeLabelText.value = ''
+}
+
+async function deleteCurrentEdge() {
+  console.log('删除按钮被点击')
+  if (!editingEdgeForLabel.value) {
+    console.warn('没有正在编辑的边')
+    return
+  }
+  const edge = editingEdgeForLabel.value
+  const edgeId = edge.id
+  console.log('准备删除连线:', edgeId, edge.label)
+
+  if (!confirm('确定要删除这条连线吗？')) {
+    console.log('用户取消删除')
+    return
+  }
+
+  // 先关闭浮窗，避免二次操作
+  const edgeToDelete = edge
+  editingEdgeForLabel.value = null
+  editEdgeLabelText.value = ''
+
+  try {
+    console.log('调用 deleteConnection API...')
+    await deleteConnection(caseId, parseInt(edgeId))
+    console.log('API 调用成功，从本地移除边')
+    edges.value = edges.value.filter(e => e.id !== edgeId)
+  } catch (err: any) {
+    console.error('删除连线失败', err)
+    alert('删除失败：' + (err.response?.data?.detail || err.message))
+    // 恢复浮窗（因为删除失败了）
+    editingEdgeForLabel.value = edgeToDelete
+    editEdgeLabelText.value = edgeToDelete.label || ''
+  }
+}
 </script>
 
 <style scoped>
@@ -1532,4 +1646,61 @@ textarea {
   padding: 20px;
 
 }
+
+/* 连线备注相关 */
+/* 连线备注工具栏：包含输入框和删除按钮，整体居中 */
+.edge-edit-toolbar {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: transparent;
+}
+
+/* 输入框容器（带圆角白背景和阴影） */
+.edge-edit-input-wrapper {
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+  border: 1px solid #ccc;
+  padding: 4px 12px;
+}
+
+.edge-edit-input-wrapper input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 16px;
+  padding: 6px 0;
+  min-width: 120px;
+  text-align: center;
+}
+
+/* 独立的删除按钮（圆形） */
+.edge-delete-btn {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.edge-delete-btn:hover {
+  background: #ffebee;
+  border-color: #c62828;
+  color: #c62828;
+  transform: scale(1.05);
+}
+
 </style>
