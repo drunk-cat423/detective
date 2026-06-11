@@ -217,7 +217,7 @@
          <div v-show ="panelOpen && activeTab === 'docs'" class = "panel-content">
           <div class = "upload-area"
               @dragover.prevent
-              @drag.prevent = "handleDrop"
+              @drop.prevent = "handleDrop"
               @click = "triggerFileInput">
               <input type="file" ref = "fileInput" accept = ".txt" style = "display: none" @change = "handleFileSelect"/>
               <p>📂 拖拽或点击上传</p>
@@ -228,7 +228,7 @@
             <h4>已上传文档</h4>
             <ul>
               <li v-for = "doc in docList" :key = "doc.id">
-                {{ doc.filename }} ({{ doc.chunk_count }})块
+                {{ doc.filename }} 
               </li>
             </ul>
           </div>
@@ -987,17 +987,13 @@ async function saveEdgeLabelEdit() {
 }
 
 async function deleteCurrentEdge() {
-  console.log('删除按钮被点击')
   if (!editingEdgeForLabel.value) {
-    console.warn('没有正在编辑的边')
     return
   }
   const edge = editingEdgeForLabel.value
   const edgeId = edge.id
-  console.log('准备删除连线:', edgeId, edge.label)
 
   if (!confirm('确定要删除这条连线吗？')) {
-    console.log('用户取消删除')
     return
   }
 
@@ -1007,14 +1003,12 @@ async function deleteCurrentEdge() {
   editEdgeLabelText.value = ''
 
   try {
-    console.log('调用 deleteConnection API...')
     await deleteConnection(caseId, parseInt(edgeId))
-    console.log('API 调用成功，从本地移除边')
     edges.value = edges.value.filter(e => e.id !== edgeId)
   } catch (err: any) {
     console.error('删除连线失败', err)
     alert('删除失败：' + (err.response?.data?.detail || err.message))
-    // 恢复浮窗（因为删除失败了）
+
     editingEdgeForLabel.value = edgeToDelete
     editEdgeLabelText.value = edgeToDelete.label || ''
   }

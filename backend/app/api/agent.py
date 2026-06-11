@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.database import async_session
 from app.models.agent_message import AgentMessage
-from app.core.agent import chat, chat_stream
+from app.core.agent import chat_with_tools,chat_stream as stream_with_tools
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/cases/{case_id}/agent", tags=["agent"])
@@ -38,7 +38,7 @@ async def agent_chat(
     history_messages = result.scalars().all()
     history = [{"role": msg.role, "content": msg.content} for msg in reversed(history_messages)]
 
-    reply = await chat(case_id, request.message, history, db=db)
+    reply = await chat_with_tools(case_id, request.message, history, db=db)
 
     user_msg = AgentMessage(case_id=case_id, role="user", content=request.message)
     db.add(user_msg)
@@ -66,13 +66,14 @@ async def agent_chat_stream(
     history_messages = result.scalars().all()
     history = [{"role": msg.role, "content": msg.content} for msg in reversed(history_messages)]
 
+    #这里是用AgentMessage来创建用户对话,信息来自request,是从前端直接发过来的
     user_msg = AgentMessage(case_id=case_id, role="user", content=request.message)
     db.add(user_msg)
     await db.commit()
 
     async def generate():
         full_reply = ""
-        async for chunk in chat_stream(case_id, request.message, history, db=db):
+        async for chunk in stream_with_tools(case_id, request.message, history, db=db):
             full_reply += chunk
             yield f"data: {chunk}\n\n"
 
