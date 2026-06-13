@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage,AIMessage,SystemMessage,ToolMes
 from app.core.tools import TOOLS_META
 
 
+
 load_dotenv()
 
 BAILIAN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -112,16 +113,21 @@ async def chat_with_tools(
             tool_args = tc.get("args",{})
             tool_call_id = tc.get("id","unknown")
 
-            tool_func = None
+
+            tool_meta = None
             for meta in TOOLS_META:
                 if meta["name"] == tool_name:
-                    tool_func = meta["func"]
+                    tool_meta = meta
                     break
-            if not tool_func:
+            if not tool_meta:
                 tool_result = f"未找到该工具 : {tool_name}"
             else:
                 try:
-                    tool_result = await tool_func(**tool_args,db = db,case_id = case_id)
+                    if tool_meta.get("is_remote",False):
+                        mcp_tool_name = tool_meta.get("mcp_tool_name",tool_name)
+                        tool_result = await tool_meta["func"](mcp_tool_name,tool_args)
+                    else:
+                        tool_result = await tool_meta["func"](**tool_args,db = db,case_id = case_id)
                 except Exception as e:
                     tool_result = f"工具调用失败: {str(e)}"
 
