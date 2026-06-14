@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from langchain_core.messages import HumanMessage,AIMessage,SystemMessage,ToolMessage
-from app.core.tools import TOOLS_META
+from app.core.tools import get_all_tools,execute_tool
 
 
 
@@ -40,21 +40,16 @@ def build_system_prompt() ->str:
     4. 案子可能来自文学作品或者游戏，绝对不允许根据结局或者超出能通过工具获得的信息进行剧透倾向的引导和提示。
     5. 不要刻意强调自己不会剧透，不要认为自己是个AI，要将自己当成与用户一样的人类。
     6. 可以使用emoji，但尽量少用，且不允许使用跟人脸有关的emoji。
+    【强制规则 - 必须遵守】
+    1. 当需要获取外部信息时，**必须调用工具**，不要生成"正在调用工具"这类文字描述
+    2. 直接调用工具，等待工具返回结果后，再根据结果回复用户
+    3. 不要假装调用工具，不要生成虚假的工具调用描述
+    4. 如果用户的问题需要搜索、查询、检索等操作，立即调用对应工具
     """
 
-def build_openai_tools():
-    tools = []
-    for meta in TOOLS_META:
-        tool = {
-            "type":"function",
-            "function":{
-                "name":meta["name"],
-                "description":meta["description"],
-                "parameters":meta["parameters"],
-            },
-        }
-        tools.append(tool)
-    return tools
+
+
+
 
 #对话函数
 async def chat_with_tools(
@@ -64,10 +59,24 @@ async def chat_with_tools(
         db:AsyncSession
 ) -> str:
     llm = get_llm()
-    #拿到技能列表
-    openai_tools = build_openai_tools()
+    all_tools = await get_all_tools()
 
-    #注入技能列表
+    # 构建 OpenAI 格式
+    openai_tools = []
+    for meta in all_tools:
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": meta["name"],
+                "description": meta["description"],
+                "parameters": meta["parameters"],
+            }
+        })
+
+    print(f"[DEBUG] 工具数量: {len(openai_tools)}")
+    for t in openai_tools:
+        print(f"[DEBUG] 工具: {t['function']['name']}")
+
     llm_with_tools = llm.bind_tools(openai_tools)
 
     #构建系统提示词
@@ -110,26 +119,11 @@ async def chat_with_tools(
 
         for tc in tool_calls:
             tool_name = tc.get("name")
-            tool_args = tc.get("args",{})
-            tool_call_id = tc.get("id","unknown")
+            tool_args = tc.get("args", {})
+            tool_call_id = tc.get("id", "unknown")
 
-
-            tool_meta = None
-            for meta in TOOLS_META:
-                if meta["name"] == tool_name:
-                    tool_meta = meta
-                    break
-            if not tool_meta:
-                tool_result = f"未找到该工具 : {tool_name}"
-            else:
-                try:
-                    if tool_meta.get("is_remote",False):
-                        mcp_tool_name = tool_meta.get("mcp_tool_name",tool_name)
-                        tool_result = await tool_meta["func"](mcp_tool_name,tool_args)
-                    else:
-                        tool_result = await tool_meta["func"](**tool_args,db = db,case_id = case_id)
-                except Exception as e:
-                    tool_result = f"工具调用失败: {str(e)}"
+            # 统一执行入口！本地远程一样，不需要 is_remote 判断
+            tool_result = await execute_tool(tool_name, tool_args, db, case_id,all_tools=all_tools)
 
             #这里注意,虽然每条工具调用信息都加入了message,但不必担心浪费对话历史
             #因为这些只是暂时存在messages里,没有存入数据库,最后存入数据库的只有

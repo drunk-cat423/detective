@@ -8,6 +8,43 @@ from app.core.vector_store import search_documents
 import os
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+from pydantic import BaseModel,Field
+
+MCP_SERVER_URL = os.getenv(
+    "MCP_SSE_URL",
+    "https://mcp.api-inference.modelscope.net/fbe678446a5141/sse"
+)
+
+
+#========================此处使用的Field可简单认为是对参数进行一些设置,以便后面直接注入TOOLS_META中==========================
+#================所以Field并没有生成openai需要的json格式,只是注释参数,生成json格式是agent.py文件中的.model_json_schema完成的==========
+class SearchNotesInput(BaseModel):
+    """search_notes 工具的参数（LLM 只需要填这些）"""
+    keyword: str = Field(description="搜索用的关键词，如'刀子'、'动机'")
+
+class TimelineInput(BaseModel):
+    """get_timeline 工具的参数"""
+    start_date: Optional[str] = Field(
+        default=None, description="开始日期，格式YYYY-MM-DD（可选）"
+    )
+    end_date: Optional[str] = Field(
+        default=None, description="结束日期，格式YYYY-MM-DD（可选）"
+    )
+
+class KnownInfosInput(BaseModel):
+    """get_known_infos 工具无参数，但保留空模型统一处理"""
+    pass
+
+class SearchDocumentsInput(BaseModel):
+    """search_documents 工具的参数"""
+    query: str = Field(description="检索用的查询语句")
+
+class WebSearchInput(BaseModel):
+    """web_search 工具的参数"""
+    query: str = Field(description="搜索用的关键词")
+    count: int = Field(default=10, description="返回结果数量，默认10，最多50")
+    offset: int = Field(default=0, description="从第几条结果开始，用于翻页，默认0")
+
 
 
 # 工具函数:搜索便签
@@ -72,110 +109,159 @@ async def search_documents_tool(query: str, db: AsyncSession, case_id: int) -> s
     return "\n-----\n".join(result)
 
 
-async def call_mcp_tool(tool_name: str, arguments: dict) -> str:
-    """通过MCP SDK调用远程MCP服务"""
-    sse_url = os.getenv("MCP_SSE_URL", "https://mcp.api-inference.modelscope.net/fbe678446a5141/sse")
 
+#加载远程工具列表
+async def load_remote_tools() -> list[dict]:
+    print(f"[MCP] 开始连接服务器: {MCP_SERVER_URL}")
     try:
+        async with sse_client(MCP_SERVER_URL) as (read_stream, write_stream):
+            print("[MCP] SSE 连接建立")
+            async with ClientSession(read_stream, write_stream) as session:
+                print("[MCP] Session 创建")
+                await session.initialize()
+                print("[MCP] 初始化完成")
 
-        async with sse_client(sse_url) as (read_stream, write_stream):
+                result = await session.list_tools()
+                print(f"[MCP] list_tools 返回类型: {type(result)}")
+                print(f"[MCP] result 内容: {result}")
+
+                mcp_tools = result.tools
+                print(f"[MCP] 工具数量: {len(mcp_tools)}")
+                for t in mcp_tools:
+                    print(f"[MCP] 工具: {t.name}")
+
+                remote_tools = []
+                for t in mcp_tools:
+                    remote_tools.append({
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.inputSchema,
+                        "func": call_mcp_tool,
+                        "is_remote": True,
+                    })
+                print(f"[MCP] 远程工具加载完成: {len(remote_tools)} 个")
+                return remote_tools
+
+    except Exception as e:
+        print(f"[MCP] 加载远程工具失败: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+
+
+# ========== 通用远程执行函数 ==========
+
+async def call_mcp_tool(tool_name: str, arguments: dict) -> str:
+    """执行远程 MCP 工具调用"""
+    try:
+        async with sse_client(MCP_SERVER_URL) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-
-
                 result = await session.call_tool(tool_name, arguments=arguments)
 
-
                 if result.content:
-                    texts = []
-                    for i, item in enumerate(result.content):
-                        if hasattr(item, 'text'):
-                            texts.append(item.text)
+                    texts = [item.text for item in result.content if hasattr(item, 'text')]
+                    return "\n".join(texts) if texts else "无结果"
+                return "网络搜索未返回任何结果"
 
-                    final_text = "\n".join(texts) if texts else "无结果"
-                    return final_text
-                else:
-                    print("查找返回内容为空")
-                    return "网络搜索未返回任何结果"
     except Exception as e:
         return f"MCP工具调用失败: {str(e)}"
 
 
 # 元数据(相当于菜单 用于到时构建真正的function calling参数时的参考)
-TOOLS_META = [
-
+LOCAL_TOOLS_META = [
     {
         "name": "search_notes",
-        "description": "根据关键词搜索便签中的信息,关键词为具体名词,如'刀子','动机'",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "keyword": {"type": "string", "description": "搜索用的关键词"}
-            },
-            "required": ["keyword"],
-        },
+        "description": "根据关键词搜索便签中的信息，关键词为具体名词，如'刀子'、'动机'",
+        "parameters": SearchNotesInput.model_json_schema(),  # ← 生成 JSON Schema 给 LLM
+        "input_model": SearchNotesInput,                      # ← 保留 Pydantic 模型，用于校验
         "func": search_notes,
+        "is_remote": False,
     },
-
     {
         "name": "get_timeline",
-        "description": "获取案件的时间线信息,可按日期范围过滤,日期格式为YYYY-MM-DD.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "start_date": {"type": "string", "description": "开始日期(可选)"},
-                "end_date": {"type": "string", "description": "结束时间(可选)"},
-            },
-            "required": [],
-
-        },
+        "description": "获取案件的时间线信息，可按日期范围过滤，日期格式为YYYY-MM-DD",
+        "parameters": TimelineInput.model_json_schema(),
+        "input_model": TimelineInput,
         "func": get_timeline,
+        "is_remote": False,
     },
-
     {
         "name": "get_known_infos",
-        "description": "获取已知信息,无参数",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-        },
+        "description": "获取已知信息，无参数",
+        "parameters": KnownInfosInput.model_json_schema(),
+        "input_model": KnownInfosInput,
         "func": get_known_infos,
+        "is_remote": False,
     },
-
     {
         "name": "search_documents",
         "description": "在已经上传的文档中检索相关的信息",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "检索用的查询"}
-            },
-            "required": ["query"]
-        },
+        "parameters": SearchDocumentsInput.model_json_schema(),
+        "input_model": SearchDocumentsInput,
         "func": search_documents_tool,
-
+        "is_remote": False,
     },
-
-    # mcp远程工具
-    {
-        "name": "web_search",
-        "description": "通过必应搜索引擎搜索中文网络信息,获取案件相关的背景知识、专业术语解释或历史背景",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "搜索用的关键词"},
-                "count": {"type": "integer", "description": "返回结果数量,默认10,最多50", "default": 10},
-                "offset": {"type": "integer", "description": "从第几条结果开始,用于翻页,默认0", "default": 0}
-            },
-            "required": ["query"]
-
-        },
-        "func": call_mcp_tool,
-        "is_remote": True,
-        "mcp_tool_name":"bing_search"
-
-    }
-
 ]
 
+
+_tools_cache: list[dict] = None
+
+async def get_all_tools() -> list[dict]:
+    """获取所有工具，有缓存则复用，避免每次请求都连 MCP"""
+    global _tools_cache
+    if _tools_cache is None:
+        remote_tools = await load_remote_tools()
+        _tools_cache = LOCAL_TOOLS_META + remote_tools
+    return _tools_cache
+
+async def refresh_tools() -> list[dict]:
+    """手动刷新工具列表（MCP 服务器工具变更时调用）"""
+    global _tools_cache
+    _tools_cache = None
+    return await get_all_tools()
+
+async def execute_tool(
+        tool_name: str,
+        arguments: dict,
+        db: AsyncSession,
+        case_id: int,
+        all_tools: list[dict] = None  # ← 新增：可选传入工具列表
+) -> str:
+    """
+    统一执行入口。
+    如果传入 all_tools 则直接使用，否则重新获取。
+    """
+    # 查找工具
+    if all_tools is None:
+        all_tools = await get_all_tools()  # ← 没传才重新获取
+
+    tool_meta = None
+    for meta in all_tools:
+        if meta["name"] == tool_name:
+            tool_meta = meta
+            break
+
+    if not tool_meta:
+        return f"未找到工具: {tool_name}"
+
+    # 参数校验（仅本地工具有 Pydantic 模型）
+    input_model = tool_meta.get("input_model")
+    if input_model is not None:
+        try:
+            validated = input_model(**arguments)
+            arguments = validated.model_dump(exclude_none=True)
+        except Exception as e:
+            return f"参数校验失败: {str(e)}"
+
+    # 执行
+    try:
+        if tool_meta.get("is_remote", False):
+            return await tool_meta["func"](tool_name, arguments)
+        else:
+            return await tool_meta["func"](**arguments, db=db, case_id=case_id)
+    except Exception as e:
+        return f"工具执行失败: {str(e)}"
 

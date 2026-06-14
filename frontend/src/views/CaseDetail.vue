@@ -202,9 +202,10 @@
           </div>
           <div class="chat-input">
             <input
+              ref = "chatInputRef"
               v-model="chatInput"
               placeholder="输入消息..."
-              @keyup.enter="sendMessage"
+              @keydown.enter = "handleEnterKey"
               :disabled="chatLoading"
             />
             <button @click="sendMessage" :disabled="chatLoading || !chatInput.trim()">发送</button>
@@ -338,6 +339,7 @@ const chatHistory = ref<{ role: string; content: string }[]>([])
 const chatInput = ref('')
 const chatLoading = ref(false)
 const chatMessages = ref<HTMLElement | null>(null)
+const chatInputRef = ref<HTMLInputElement | null>(null)
 
 //用户头像
 const userAvatar = ref('/avatar-user.png')
@@ -480,7 +482,18 @@ async function sendMessage() {
   } finally {
     chatLoading.value = false
     await loadChatHistory()
+    nextTick(() => {
+      chatInputRef.value?.focus()
+    })
   }
+}
+
+//判断回车是否是发送信息
+function handleEnterKey(event:KeyboardEvent) {
+  if (event.isComposing){
+    return
+  }
+  sendMessage()
 }
 
 //回到聊天底部
