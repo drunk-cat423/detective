@@ -9,6 +9,9 @@ import os
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from pydantic import BaseModel,Field
+from app.core.skill_loader import load_skill_content
+
+
 
 MCP_SERVER_URL = os.getenv(
     "MCP_SSE_URL",
@@ -44,6 +47,9 @@ class WebSearchInput(BaseModel):
     query: str = Field(description="搜索用的关键词")
     count: int = Field(default=10, description="返回结果数量，默认10，最多50")
     offset: int = Field(default=0, description="从第几条结果开始，用于翻页，默认0")
+
+class LoadSkillInput(BaseModel):
+    skill_name : str = Field(description="要加载的技能名称,例如'motivation_analysis'")
 
 
 
@@ -108,28 +114,25 @@ async def search_documents_tool(query: str, db: AsyncSession, case_id: int) -> s
         return "无相关文档"
     return "\n-----\n".join(result)
 
+#工具函数: 加载技能的详细信息,将技能披露当作工具
+async def load_skill(skill_name:str,db:AsyncSession=None,case_id:int = None)-> str:
+    """加载技能的详细内容,技能名称来自系统提示此中展示的"""
+    try:
+        content = load_skill_content(skill_name)
+        return content
+    except ValueError as e:
+        return f"错误: {str(e)}"
+
 
 
 #加载远程工具列表
 async def load_remote_tools() -> list[dict]:
-    print(f"[MCP] 开始连接服务器: {MCP_SERVER_URL}")
     try:
         async with sse_client(MCP_SERVER_URL) as (read_stream, write_stream):
-            print("[MCP] SSE 连接建立")
             async with ClientSession(read_stream, write_stream) as session:
-                print("[MCP] Session 创建")
                 await session.initialize()
-                print("[MCP] 初始化完成")
-
                 result = await session.list_tools()
-                print(f"[MCP] list_tools 返回类型: {type(result)}")
-                print(f"[MCP] result 内容: {result}")
-
                 mcp_tools = result.tools
-                print(f"[MCP] 工具数量: {len(mcp_tools)}")
-                for t in mcp_tools:
-                    print(f"[MCP] 工具: {t.name}")
-
                 remote_tools = []
                 for t in mcp_tools:
                     remote_tools.append({
@@ -139,7 +142,6 @@ async def load_remote_tools() -> list[dict]:
                         "func": call_mcp_tool,
                         "is_remote": True,
                     })
-                print(f"[MCP] 远程工具加载完成: {len(remote_tools)} 个")
                 return remote_tools
 
     except Exception as e:
@@ -204,6 +206,14 @@ LOCAL_TOOLS_META = [
         "func": search_documents_tool,
         "is_remote": False,
     },
+    {
+        "name":"load_skill",
+        "description":"加载特定技能的详细描述.当你认为某个技能有助于解决用户的问题时,调用此工具",
+        "parameters":LoadSkillInput.model_json_schema(),
+        "input_model":LoadSkillInput,
+        "func":load_skill,
+        "is_remote":False,
+    }
 ]
 
 
@@ -247,14 +257,6 @@ async def execute_tool(
     if not tool_meta:
         return f"未找到工具: {tool_name}"
 
-    # 参数校验（仅本地工具有 Pydantic 模型）
-    input_model = tool_meta.get("input_model")
-    if input_model is not None:
-        try:
-            validated = input_model(**arguments)
-            arguments = validated.model_dump(exclude_none=True)
-        except Exception as e:
-            return f"参数校验失败: {str(e)}"
 
     # 执行
     try:

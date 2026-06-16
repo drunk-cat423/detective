@@ -196,8 +196,19 @@
               />
               <!-- 用户消息：纯文本 -->
               <div v-if="msg.role === 'user'" class="msg-bubble">{{ msg.content }}</div>
+              
               <!-- Agent 消息：Markdown 渲染 -->
-              <div v-else class="msg-bubble" v-html="renderMarkdown(msg.content)"></div>
+              <div v-else class = "msg-bubble">
+                <template v-if = "msg.content">
+                  <div v-html="renderMarkdown(msg.content)"></div>
+                </template>
+                <template v-else-if = "isThinking">
+                  <span class = "thinking-text">
+                    小识正在努力思考
+                    <span class = "thinking-dots">...</span>
+                  </span>
+                </template>
+              </div>
             </div>
           </div>
           <div class="chat-input">
@@ -340,6 +351,8 @@ const chatInput = ref('')
 const chatLoading = ref(false)
 const chatMessages = ref<HTMLElement | null>(null)
 const chatInputRef = ref<HTMLInputElement | null>(null)
+const isThinking = ref(false)
+
 
 //用户头像
 const userAvatar = ref('/avatar-user.png')
@@ -438,6 +451,7 @@ async function sendMessage() {
   chatInput.value = ''
   chatHistory.value.push({ role: 'user', content: msg })
   chatLoading.value = true
+  isThinking.value = true
 
   const assistantMsg = reactive({ role: 'assistant', content: '' })
   chatHistory.value.push(assistantMsg)
@@ -470,6 +484,10 @@ async function sendMessage() {
         if (line.startsWith('data: ')) {
           const data = line.slice(6)
           if (data === '[DONE]') continue
+
+          if (isThinking.value) {
+            isThinking.value = false
+          }
           assistantMsg.content += data
           await nextTick()
           scrollToBottom()
@@ -478,9 +496,11 @@ async function sendMessage() {
     }
   } catch (err) {
     console.error('流式对话失败', err)
+    isThinking.value = false
     if (!assistantMsg.content) assistantMsg.content = '抱歉，请求失败，请稍后重试。'
   } finally {
     chatLoading.value = false
+    isThinking.value = false
     await loadChatHistory()
     nextTick(() => {
       chatInputRef.value?.focus()
@@ -1710,4 +1730,24 @@ textarea {
   transform: scale(1.05);
 }
 
+
+/* 提示信息 */
+/* 思考提示容器 */
+.thinking-text {
+  color: #666;           /* 从 #999 调到 #666 */
+  font-style: italic;
+  font-size: 14px;
+  animation: blink 1.5s ease-in-out infinite;
+}
+
+.thinking-dots {
+  display: inline-block;
+  animation: blink 1.5s ease-in-out infinite;
+  animation-delay: 0.3s;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 0.4; }   /* 最低亮度也调高一点 */
+  50% { opacity: 1; }
+}
 </style>

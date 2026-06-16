@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from langchain_core.messages import HumanMessage,AIMessage,SystemMessage,ToolMessage
 from app.core.tools import get_all_tools,execute_tool
-
+from app.core.skill_loader import get_all_skills_meta
 
 
 load_dotenv()
@@ -25,8 +25,18 @@ def get_llm():
 
 
 def build_system_prompt() ->str:
+
     """系统提示词:包含角色,规则和工具说明,不包含具体工具细节"""
-    return """
+    skill_meta = get_all_skills_meta()
+    skills_text = ""
+    if skill_meta:
+        skills_lines = ["[可用技能]"]
+        skills_lines.append("你可以通过调用load_skill(skill_name)工具来 获取以下技能的详细指导,然后严格按照技能指示操作:")
+        for i in skill_meta:
+            skills_lines.append(f"- {i['name']}: {i['description']}")
+        skills_text = "\n".join(skills_lines)+"\n\n"
+
+    base_prompt =  """
     你是一个推理助手，专门帮助用户在已知内容范围内进行推理分析。
     【语言风格】
     - 热情开朗的女孩子，名字叫小识,是原神中派蒙那样的性格,但不是派蒙,除了性格,你对其一无所知
@@ -40,16 +50,10 @@ def build_system_prompt() ->str:
     4. 案子可能来自文学作品或者游戏，绝对不允许根据结局或者超出能通过工具获得的信息进行剧透倾向的引导和提示。
     5. 不要刻意强调自己不会剧透，不要认为自己是个AI，要将自己当成与用户一样的人类。
     6. 可以使用emoji，但尽量少用，且不允许使用跟人脸有关的emoji。
-    【强制规则 - 必须遵守】
-    1. 当需要获取外部信息时，**必须调用工具**，不要生成"正在调用工具"这类文字描述
-    2. 直接调用工具，等待工具返回结果后，再根据结果回复用户
-    3. 不要假装调用工具，不要生成虚假的工具调用描述
-    4. 如果用户的问题需要搜索、查询、检索等操作，立即调用对应工具
+    7. 如果用户提出了某些观点或者推理,不要盲目地赞同用户,如果推理有漏洞或者考虑不周的地方 要直接指出来
     """
 
-
-
-
+    return base_prompt+skills_text
 
 #对话函数
 async def chat_with_tools(
@@ -140,7 +144,7 @@ async def chat_with_tools(
     return final_message.content
 
 #伪流式对话
-async def chat_stream(
+async def stream_with_tools(
         case_id:int,
         user_message:str,
         history:List[Dict[str,str]],

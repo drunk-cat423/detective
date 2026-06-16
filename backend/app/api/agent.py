@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.database import async_session
 from app.models.agent_message import AgentMessage
-from app.core.agent import chat_with_tools,chat_stream as stream_with_tools
+from app.core.agent import chat_with_tools,stream_with_tools
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/cases/{case_id}/agent", tags=["agent"])
