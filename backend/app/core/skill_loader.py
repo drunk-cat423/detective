@@ -4,7 +4,7 @@ import yaml
 from typing import List,Dict,Any
 from pathlib import Path
 
-SKILLS_DIR = Path(__file__).parent.parent.parent/"skill"
+SKILLS_DIR = Path(__file__).parent.parent.parent/"skills"
 
 _skills_meta_cache:List[Dict[str,Any]] | None = None
 
