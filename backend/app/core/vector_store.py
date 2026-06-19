@@ -7,6 +7,12 @@ from dotenv import load_dotenv
 import dashscope
 from dashscope import TextEmbedding
 from typing import List, Optional
+from pathlib import Path
+
+MODEL_PATH = Path(__file__).resolve().parent.parent.parent.parent / "models" / "bge-reranker-base"
+
+#
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 load_dotenv()
 
@@ -18,6 +24,7 @@ PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_data")
 dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
 
 _chroma_client = None
+_reranker = None
 
 
 def get_chroma_client():
@@ -78,6 +85,26 @@ def embed_query(query: str, dimensions: int = 1024) -> List[float]:
         raise Exception(f"Embedding API error: {resp.message}")
     return resp.output['embeddings'][0]['embedding']
 
+#重排序逻辑
+def get_reranker():
+    global _reranker
+    if _reranker is None:
+        try:
+            from sentence_transformers import CrossEncoder
+            _reranker = CrossEncoder(str(MODEL_PATH))
+            logger.info("重排序模型加载成功")
+        except Exception as e:
+            logger.error(f"重排序模型加载失败:{e}")
+            raise
+        return _reranker
+def preload_reranker():
+    """在整个服务启动时先预加载"""
+    try:
+        get_reranker()
+        logger.info("重排序模型预加载完成")
+    except Exception as e:
+        logger.warning(f"重排序模型预加载失败:{e}")
+
 
 def add_documents(case_id: int, texts: List[str], metadatas: Optional[List[dict]] = None,
                   ids: Optional[List[str]] = None):
@@ -133,9 +160,29 @@ def search_documents(case_id: int, query: str, k: int = 5) -> List[str]:
             n_results=min(k, collection.count()),
         )
 
-        if results["documents"] and results["documents"][0]:
-            return results["documents"][0]
-        return []
+        if not results["documents"] or not results["documents"][0]:
+            return []
+        documents = results["documents"][0]
+
+        #如果召回小于等于五条,则不用排序
+        if len(documents)<=5:
+            return documents[:k*2]
+
+        #使用重排序
+        try:
+            reranker = get_reranker()
+            pairs = [[query,doc] for doc in documents]
+            scores = reranker.predict(pairs)
+
+            scored_docs = list(zip(documents,scores))
+            scored_docs.sort(key = lambda x :x[1],reverse=True)
+
+            logger.info(f"重排序完成")
+            return [doc for doc,score in scored_docs[:k]]
+        except Exception as e:
+            logger.error(f"重排序失败,返回原始检索内容.错误信息:{e}")
+
+
     except Exception as e:
         logger.error(f"搜索文档失败: {e}")
         return []

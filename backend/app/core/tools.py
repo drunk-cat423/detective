@@ -126,50 +126,51 @@ async def load_skill(skill_name:str,db:AsyncSession=None,case_id:int = None)-> s
 
 
 #加载远程工具列表
-async def load_remote_tools() -> list[dict]:
-    try:
-        async with sse_client(MCP_SERVER_URL) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                result = await session.list_tools()
-                mcp_tools = result.tools
-                remote_tools = []
-                for t in mcp_tools:
-                    remote_tools.append({
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.inputSchema,
-                        "func": call_mcp_tool,
-                        "is_remote": True,
-                    })
-                return remote_tools
-
-    except Exception as e:
-        print(f"[MCP] 加载远程工具失败: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        return []
+# async def load_remote_tools() -> list[dict]:
+#     try:
+#         async with sse_client(MCP_SERVER_URL) as (read_stream, write_stream):
+#             async with ClientSession(read_stream, write_stream) as session:
+#                 await session.initialize()
+#                 result = await session.list_tools()
+#                 mcp_tools = result.tools
+#                 remote_tools = []
+#                 for t in mcp_tools:
+#                     remote_tools.append({
+#                         "name": t.name,
+#                         "description": t.description,
+#                         "parameters": t.inputSchema,
+#                         "func": call_mcp_tool,
+#                         "is_remote": True,
+#                     })
+#                 return remote_tools
+#
+#     except Exception as e:
+#         print(f"[MCP] 加载远程工具失败: {type(e).__name__}: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return []
 
 
 
 
 # ========== 通用远程执行函数 ==========
+#效果不稳定 暂时取消
 
-async def call_mcp_tool(tool_name: str, arguments: dict) -> str:
-    """执行远程 MCP 工具调用"""
-    try:
-        async with sse_client(MCP_SERVER_URL) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, arguments=arguments)
-
-                if result.content:
-                    texts = [item.text for item in result.content if hasattr(item, 'text')]
-                    return "\n".join(texts) if texts else "无结果"
-                return "网络搜索未返回任何结果"
-
-    except Exception as e:
-        return f"MCP工具调用失败: {str(e)}"
+# async def call_mcp_tool(tool_name: str, arguments: dict) -> str:
+#     """执行远程 MCP 工具调用"""
+#     try:
+#         async with sse_client(MCP_SERVER_URL) as (read_stream, write_stream):
+#             async with ClientSession(read_stream, write_stream) as session:
+#                 await session.initialize()
+#                 result = await session.call_tool(tool_name, arguments=arguments)
+#
+#                 if result.content:
+#                     texts = [item.text for item in result.content if hasattr(item, 'text')]
+#                     return "\n".join(texts) if texts else "无结果"
+#                 return "网络搜索未返回任何结果"
+#
+#     except Exception as e:
+#         return f"MCP工具调用失败: {str(e)}"
 
 
 # 元数据(相当于菜单 用于到时构建真正的function calling参数时的参考)
@@ -221,12 +222,12 @@ _tools_cache: list[dict] = None
 
 async def get_all_tools() -> list[dict]:
     """获取所有工具，有缓存则复用，避免每次请求都连 MCP"""
-    global _tools_cache
-    if _tools_cache is None:
-        remote_tools = await load_remote_tools()
-        _tools_cache = LOCAL_TOOLS_META + remote_tools
-    return _tools_cache
-
+    # global _tools_cache
+    # if _tools_cache is None:
+    #     remote_tools = await load_remote_tools()
+    #     _tools_cache = LOCAL_TOOLS_META + remote_tools
+    # return _tools_cache
+    return LOCAL_TOOLS_META
 async def refresh_tools() -> list[dict]:
     """手动刷新工具列表（MCP 服务器工具变更时调用）"""
     global _tools_cache

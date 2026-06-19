@@ -1,20 +1,21 @@
+from collections import defaultdict
 from typing import List
 
-arrays = [[-8,-7,-7,-5,1,1,3,4],[-2],[-10,-10,-7,0,1,3],[2]]
 
-def maxDistance(arrays: List[List[int]]) -> int:
-    n = len(arrays)
-    mn = arrays[0][0]
-    mx = arrays[0][-1]
-    ans = 0
-    for i in range(1, n):
-        ans = max(abs(max(arrays[i]) - mn), abs(mx - min(arrays[i])))
-        mn = min(mn, min(arrays[i]))
-        mx = max(mx, max(arrays[i]))
-        print(f"max: {mx}")
-        print(f"min: {mn}")
-        print(f"ans: {ans}")
+def numEquivDominoPairs(dominoes: List[List[int]]) -> int:
+    idk = defaultdict(int)
+    cnt = 0
+    for i, x in enumerate(dominoes):
+        if tuple([x[1], x[0]]) in idk:
+            cnt += 1
+        elif tuple([x[0],x[1]]) in idk:
+            cnt += idk[tuple(x)]
+            print(f"idk{x}:{idk[tuple(x)]}")
+        idk[tuple(x)] += 1
+        print(cnt)
+        print(idk)
+        print("==================")
+    return cnt
 
-maxDistance(arrays)
-#1 3 7 12
-#3 10 21
+dominoes = [[1,1],[2,2],[1,1],[1,2],[1,2],[1,1]]
+numEquivDominoPairs(dominoes)

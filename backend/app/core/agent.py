@@ -143,16 +143,69 @@ async def chat_with_tools(
         messages.append(final_response)
     return final_message.content
 
-#伪流式对话
+
+#流式对话
 async def stream_with_tools(
-        case_id:int,
-        user_message:str,
-        history:List[Dict[str,str]],
-        db:AsyncSession
+    case_id:int,
+    user_message:str,
+    history:List[Dict[str,str]],
+    db:AsyncSession
 ) -> AsyncGenerator[str,None]:
-    full_answer = await chat_with_tools(case_id,user_message,history,db)
-    for chunk in full_answer:
-        yield chunk
-        await asyncio.sleep(0.02)
+    llm = get_llm()
+    all_tools = await get_all_tools()
+
+    openai_tools = []
+    for meta in all_tools:
+        openai_tools.append({
+            "type":"function",
+            "function":{
+                "name":meta["name"],
+                "description":meta["description"],
+                "parameters":meta["parameters"]
+
+
+            }
+
+        })
+    llm_with_tool = llm.bind_tools(openai_tools)
+    system_prompt = build_system_prompt()
+
+    messages = [SystemMessage(content = system_prompt)]
+    for msg in history:
+        if msg["role"]=="user":
+            messages.append(HumanMessage(content = msg["content"]))
+        else:
+            messages.append(AIMessage(content = msg["content"]))
+    messages.append(HumanMessage(content = user_message))
+
+    max_iteration = 5
+    for i in range(max_iteration):
+        response = await llm_with_tool.ainvoke(messages)
+        messages.append(response)
+
+        tool_calls = getattr(response,"tool_calls",[])
+        if not tool_calls:
+            break
+
+        for tc in tool_calls:
+            tool_name = tc.get("name")
+            tool_args = tc.get("args",[])
+            tool_call_id = tc.get("id","unknown")
+
+            tool_result = await execute_tool(
+                tool_name,
+                tool_args,
+                db,
+                case_id,
+                all_tools = all_tools
+            )
+            messages.append(ToolMessage(content = tool_result,tool_call_id = tool_call_id))
+
+        #确保最后一条是AImessage
+    async for chunk in llm.astream(messages):
+        content = chunk.content
+        if content:
+            yield content
+
 
 

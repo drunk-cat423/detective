@@ -1,7 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.vector_store import preload_reranker
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Detective Assistant API")
+@asynccontextmanager
+async def lifespan(app:FastAPI):
+    preload_reranker()
+    yield
+
+
+
+app = FastAPI(title="Detective Assistant API",lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -10,6 +19,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+#服务启动时加载重排序器
+
+
+
 
 from app.api.cases import router as cases_router
 app.include_router(cases_router)
