@@ -19,3 +19,5 @@ __pycache__/
 # Chroma 向量数据库
 backend/chroma_data/
 *.bin
+
+models/
