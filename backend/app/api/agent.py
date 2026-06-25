@@ -61,7 +61,7 @@ async def agent_chat_stream(
         select(AgentMessage)
         .where(AgentMessage.case_id == case_id)
         .order_by(AgentMessage.created_at.desc())
-        .limit(20)
+        .limit(10)
     )
     history_messages = result.scalars().all()
     history = [{"role": msg.role, "content": msg.content} for msg in reversed(history_messages)]

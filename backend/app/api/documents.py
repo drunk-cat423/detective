@@ -80,8 +80,8 @@ async def upload_document(
     doc = Document(
         case_id = case_id,
         filename = file.filename,
-        content = text,
-        chunk_count = len(chunks)
+        chunk_count = len(chunks),
+        content = file.filename
     )
     db.add(doc)
     await db.commit()

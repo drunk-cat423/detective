@@ -4,8 +4,7 @@ import uuid
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from dotenv import load_dotenv
-import dashscope
-from dashscope import TextEmbedding
+from openai import OpenAI
 from typing import List, Optional
 from pathlib import Path
 
@@ -14,17 +13,35 @@ MODEL_PATH = Path(__file__).resolve().parent.parent.parent.parent / "models" / "
 #
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
-load_dotenv()
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
 PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_data")
 
-# 配置 DashScope API Key
-dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
+# 配置  API Key
+SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY")
+SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
+EMBEDDING_MODEL = "BAAI/bge-m3"
+
+_embedding_client = None
+
 
 _chroma_client = None
 _reranker = None
+
+
+
+def get_embedding_client():
+    global _embedding_client
+    if _embedding_client is None:
+        if not SILICONFLOW_API_KEY:
+            raise ValueError("未设置api")
+        _embedding_client = OpenAI(
+            api_key=SILICONFLOW_API_KEY,
+            base_url=SILICONFLOW_BASE_URL
+        )
+    return _embedding_client
 
 
 def get_chroma_client():
@@ -46,44 +63,37 @@ def get_or_create_collection(case_id: int):
 
 def embed_documents(texts: List[str], dimensions: int = 1024) -> List[List[float]]:
     """
-    使用 DashScope text-embedding-v4 批量获取向量
     每次最多处理 10 个文本
     """
     if not texts:
         return []
 
+    client = get_embedding_client()
+
     # 批量调用，每次最多10条
     all_vectors = []
     for i in range(0, len(texts), 10):
         batch = texts[i:i + 10]
-        resp = TextEmbedding.call(
-            model="text-embedding-v4",
+        resp = client.embeddings.create(
+            model=EMBEDDING_MODEL,
             input=batch,
-            dimensions=dimensions
         )
-        if resp.status_code != 200:
-            raise Exception(f"Embedding API error: {resp.message}")
 
-        # 提取向量，按输入顺序排列
-        embeddings = resp.output['embeddings']
-        # 确保排序正确（根据索引）
-        embeddings.sort(key=lambda x: x['text_index'])
-        batch_vectors = [item['embedding'] for item in embeddings]
-        all_vectors.extend(batch_vectors)
+        # 按照输入顺序提取向量
+        batch_vectors = [item.embedding for item in resp.data]
+        all_vectors.extend((batch_vectors))
 
     return all_vectors
 
 
 def embed_query(query: str, dimensions: int = 1024) -> List[float]:
     """为查询文本生成向量"""
-    resp = TextEmbedding.call(
-        model="text-embedding-v4",
+    client = get_embedding_client()
+    resp = client.embeddings.create(
+        model=EMBEDDING_MODEL,
         input=query,
-        dimensions=dimensions
     )
-    if resp.status_code != 200:
-        raise Exception(f"Embedding API error: {resp.message}")
-    return resp.output['embeddings'][0]['embedding']
+    return resp.data[0].embedding
 
 #重排序逻辑
 def get_reranker():

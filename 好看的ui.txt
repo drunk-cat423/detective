@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vue 拖拽事件对比演示</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); 
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    h1 { 
+      text-align: center; 
+      margin-bottom: 8px;
+      color: #60a5fa;
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .subtitle {
+      text-align: center;
+      color: #94a3b8;
+      margin-bottom: 40px;
+      font-size: 15px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+    .demo-card {
+      background: rgba(30, 41, 59, 0.8);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 28px;
+      border: 2px solid #334155;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .demo-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      transition: all 0.3s ease;
+    }
+    .demo-card.correct::before { background: linear-gradient(90deg, #22c55e, #4ade80); }
+    .demo-card.wrong::before { background: linear-gradient(90deg, #ef4444, #f87171); }
+    .demo-card.highlight {
+      border-color: #60a5fa;
+      box-shadow: 0 0 30px rgba(96, 165, 250, 0.15);
+      transform: translateY(-2px);
+    }
+    .demo-card.success {
+      border-color: #22c55e !important;
+      box-shadow: 0 0 30px rgba(34, 197, 94, 0.2) !important;
+    }
+    .demo-card.reject {
+      border-color: #ef4444 !important;
+      box-shadow: 0 0 30px rgba(239, 68, 68, 0.2) !important;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .badge {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge.correct { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+    .badge.wrong { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .code-snippet {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      border: 1px solid #1e293b;
+      overflow-x: auto;
+    }
+    .code-snippet .tag { color: #f472b6; }
+    .code-snippet .attr { color: #60a5fa; }
+    .code-snippet .string { color: #86efac; }
+    .code-snippet .comment { color: #64748b; }
+    .code-snippet .event { color: #fbbf24; }
+    .drop-zone {
+      height: 180px;
+      border: 2px dashed #475569;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.25s ease;
+      cursor: pointer;
+      position: relative;
+      background: rgba(15, 23, 42, 0.4);
+    }
+    .drop-zone .icon {
+      font-size: 48px;
+      transition: all 0.3s ease;
+      filter: grayscale(0.3);
+    }
+    .drop-zone:hover .icon,
+    .demo-card.highlight .drop-zone .icon {
+      transform: scale(1.15) rotate(-5deg);
+      filter: grayscale(0);
+    }
+    .drop-zone .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .drop-zone .hint {
+      font-size: 12px;
+      color: #64748b;
+    }
+    .event-log {
+      margin-top: 18px;
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 14px;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      min-height: 140px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #1e293b;
+    }
+    .event-log .log-item {
+      padding: 4px 0;
+      border-bottom: 1px solid #1e293b;
+      animation: slideIn 0.3s ease;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .event-log .log-item:last-child { border-bottom: none; }
+    .event-log .time { color: #475569; font-size: 11px; min-width: 70px; }
+    .event-log .tag-label {
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      min-width: 70px;
+      text-align: center;
+    }
+    .tag-dragover { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+    .tag-drop { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+    .tag-drag { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
+    .tag-error { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .tag-info { background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
+    .event-log .msg { color: #cbd5e1; }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .btn {
+      padding: 6px 14px;
+      background: #334155;
+      border: none;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .btn:hover { background: #475569; }
+    .btn:active { transform: scale(0.95); }
+    .legend-bar {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+      background: rgba(30, 41, 59, 0.6);
+      padding: 12px 24px;
+      border-radius: 12px;
+      max-width: fit-content;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      box-shadow: 0 0 8px currentColor;
+    }
+    .summary-box {
+      grid-column: 1 / -1;
+      background: rgba(30, 41, 59, 0.8);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 28px;
+      border: 2px solid #334155;
+      margin-top: 10px;
+    }
+    .summary-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .compare-table th {
+      text-align: left;
+      padding: 12px 16px;
+      background: #0f172a;
+      color: #94a3b8;
+      font-weight: 600;
+      border-bottom: 2px solid #334155;
+    }
+    .compare-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #1e293b;
+      color: #cbd5e1;
+    }
+    .compare-table tr:hover td { background: rgba(96, 165, 250, 0.05); }
+    .status-ok { color: #4ade80; font-weight: 600; }
+    .status-bad { color: #f87171; font-weight: 600; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-12px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .counter-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .counter-badge.show { opacity: 1; }
+  </style>
+<base target="_blank">
+</head>
+<body>
+  <h1>🎯 Vue 拖拽事件对比演示</h1>
+  <p class="subtitle">拖拽文件到下方两个区域，观察事件触发顺序和差异</p>
+
+  <div class="legend-bar">
+    <div class="legend-item"><div class="legend-dot" style="background:#fbbf24;color:#fbbf24;"></div>dragover（悬停，持续触发）</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#22c55e;color:#22c55e;"></div>drop（放下，只触发一次）</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#a78bfa;color:#a78bfa;"></div>drag（拖动中，持续触发）</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ef4444;color:#ef4444;"></div>错误/问题</div>
+  </div>
+
+  <div class="container">
+    <!-- 左侧：正确用法 -->
+    <div class="demo-card correct" id="card-correct">
+      <div class="counter-badge" id="counter-correct">drop: 0</div>
+      <div class="card-header">
+        <span class="badge correct">✅ 正确写法</span>
+      </div>
+      <div class="card-title">@dragover.prevent + @drop.prevent</div>
+      <div class="card-desc">
+        允许文件被放置，松手时触发 drop 事件。这是 Vue 中处理文件拖拽的标准做法。
+      </div>
+      <div class="code-snippet">
+        <div><span class="tag">&lt;div</span></div>
+        <div>  <span class="attr">@dragover.prevent</span></div>
+        <div>  <span class="attr">@drop.prevent</span>=<span class="string">"handleDrop"</span><span class="comment"> &lt;-- ✅ 松手时触发</span></div>
+        <div><span class="tag">&gt;</span></div>
+      </div>
+      <div class="drop-zone" id="zone-correct">
+        <div class="icon">📁</div>
+        <div class="title">拖文件到这里</div>
+        <div class="hint">正确的 prevent 组合</div>
+      </div>
+      <div class="event-log" id="log-correct"></div>
+      <div class="controls">
+        <button class="btn" onclick="clearLog('correct')">🗑️ 清空日志</button>
+        <button class="btn" onclick="simulateCorrect()">🎮 模拟演示</button>
+      </div>
+    </div>
+
+    <!-- 右侧：错误用法 -->
+    <div class="demo-card wrong" id="card-wrong">
+      <div class="counter-badge" id="counter-wrong">drag: 0</div>
+      <div class="card-header">
+        <span class="badge wrong">❌ 错误写法</span>
+      </div>
+      <div class="card-title">@dragover.prevent + @drag.prevent</div>
+      <div class="card-desc">
+        你代码中的写法。<span style="color:#f87171;font-weight:600;">drag</span> 事件在拖动过程中持续触发，不是放下时触发！
+      </div>
+      <div class="code-snippet">
+        <div><span class="tag">&lt;div</span></div>
+        <div>  <span class="attr">@dragover.prevent</span></div>
+        <div>  <span class="attr">@drag.prevent</span>=<span class="string">"handleDrop"</span><span class="comment"> &lt;-- ❌ 拖动中持续触发</span></div>
+        <div><span class="tag">&gt;</span></div>
+      </div>
+      <div class="drop-zone" id="zone-wrong">
+        <div class="icon">🚫</div>
+        <div class="title">拖文件到这里</div>
+        <div class="hint">错误的 drag 事件绑定</div>
+      </div>
+      <div class="event-log" id="log-wrong"></div>
+      <div class="controls">
+        <button class="btn" onclick="clearLog('wrong')">🗑️ 清空日志</button>
+        <button class="btn" onclick="simulateWrong()">🎮 模拟演示</button>
+      </div>
+    </div>
+
+    <!-- 对比总结 -->
+    <div class="summary-box">
+      <div class="summary-title">📊 事件对比表</div>
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>事件</th>
+            <th>触发时机</th>
+            <th>触发频率</th>
+            <th>是否需要 .prevent</th>
+            <th>用途</th>
+            <th>你的代码</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span style="color:#fbbf24;font-weight:600;">dragover</span></td>
+            <td>文件悬停在元素上方</td>
+            <td>持续触发（每秒几十次）</td>
+            <td>✅ 必须，否则无法 drop</td>
+            <td>高亮放置区域</td>
+            <td>✅ 正确</td>
+          </tr>
+          <tr>
+            <td><span style="color:#22c55e;font-weight:600;">drop</span></td>
+            <td><b>松开鼠标放下文件</b></td>
+            <td><b>只触发一次</b></td>
+            <td>✅ 必须，阻止浏览器打开文件</td>
+            <td><b>获取文件，执行上传</b></td>
+            <td class="status-bad">❌ 写成了 drag</td>
+          </tr>
+          <tr>
+            <td><span style="color:#a78bfa;font-weight:600;">drag</span></td>
+            <td>文件被拖动期间（全局）</td>
+            <td>持续触发（与元素无关）</td>
+            <td>—</td>
+            <td>一般不用来接收文件</td>
+            <td class="status-bad">❌ 错误绑定</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // 工具函数
+    function log(id, text, type = 'info') {
+      const logEl = document.getElementById('log-' + id);
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      const time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const ms = String(new Date().getMilliseconds()).padStart(3, '0');
+
+      const tagClass = 'tag-' + type;
+      const tagText = { dragover: 'DRAGOVER', drop: 'DROP', drag: 'DRAG', error: 'ERROR', info: 'INFO' }[type] || type.toUpperCase();
+
+      item.innerHTML = `<span class="time">[${time}.${ms}]</span><span class="tag-label ${tagClass}">${tagText}</span><span class="msg">${text}</span>`;
+      logEl.appendChild(item);
+      logEl.scrollTop = logEl.scrollHeight;
+
+      // 限制日志数量
+      while (logEl.children.length > 50) {
+        logEl.removeChild(logEl.firstChild);
+      }
+    }
+
+    function clearLog(id) {
+      document.getElementById('log-' + id).innerHTML = '';
+      if (id === 'correct') dropCount = 0;
+      if (id === 'wrong') dragCount = 0;
+      updateCounters();
+    }
+
+    let dropCount = 0;
+    let dragCount = 0;
+
+    function updateCounters() {
+      const c1 = document.getElementById('counter-correct');
+      const c2 = document.getElementById('counter-wrong');
+      c1.textContent = `drop: ${dropCount}`;
+      c2.textContent = `drag: ${dragCount}`;
+      c1.classList.toggle('show', dropCount > 0);
+      c2.classList.toggle('show', dragCount > 0);
+    }
+
+    // ========== 左侧：正确用法 ==========
+    const zoneCorrect = document.getElementById('zone-correct');
+    const cardCorrect = document.getElementById('card-correct');
+
+    zoneCorrect.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      cardCorrect.classList.add('highlight');
+      // 节流：只记录部分 dragover，避免刷屏
+      if (Math.random() > 0.85) {
+        log('correct', '文件悬停中...', 'dragover');
+      }
+    });
+
+    zoneCorrect.addEventListener('dragleave', () => {
+      cardCorrect.classList.remove('highlight');
+      log('correct', '文件离开区域', 'info');
+    });
+
+    zoneCorrect.addEventListener('drop', (e) => {
+      e.preventDefault();
+      cardCorrect.classList.remove('highlight');
+      cardCorrect.classList.add('success');
+      setTimeout(() => cardCorrect.classList.remove('success'), 1200);
+
+      const files = e.dataTransfer.files;
+      const names = files.length > 0 ? Array.from(files).map(f => f.name).join(', ') : '（无文件）';
+      dropCount++;
+      updateCounters();
+      log('correct', `✅ 成功接收 ${files.length} 个文件: ${names}`, 'drop');
+    });
+
+    // ========== 右侧：错误用法（模拟你代码里的 @drag.prevent）==========
+    const zoneWrong = document.getElementById('zone-wrong');
+    const cardWrong = document.getElementById('card-wrong');
+    let dragThrottle = 0;
+
+    zoneWrong.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      cardWrong.classList.add('highlight');
+    });
+
+    zoneWrong.addEventListener('dragleave', () => {
+      cardWrong.classList.remove('highlight');
+    });
+
+    // 模拟你代码里的 @drag.prevent="handleDrop"
+    // drag 事件在整个页面拖动期间都会触发，不限于元素上方！
+    document.addEventListener('drag', (e) => {
+      // 只有当拖动经过右侧区域附近时才显示日志，模拟用户体验
+      const rect = zoneWrong.getBoundingClientRect();
+      const nearZone = e.clientX > rect.left - 100 && e.clientX < rect.right + 100 && 
+                       e.clientY > rect.top - 100 && e.clientY < rect.bottom + 100;
+
+      if (nearZone) {
+        dragThrottle++;
+        dragCount++;
+        updateCounters();
+
+        if (dragThrottle <= 8) {
+          log('wrong', `drag 触发 #${dragCount}（拖动中持续触发！）`, 'drag');
+        } else if (dragThrottle === 9) {
+          log('wrong', '...drag 触发过于频繁，日志省略...', 'info');
+        }
+
+        cardWrong.classList.add('reject');
+        setTimeout(() => cardWrong.classList.remove('reject'), 200);
+      }
+    });
+
+    // 实际上 drop 也会触发，但你的代码没绑定它
+    zoneWrong.addEventListener('drop', (e) => {
+      e.preventDefault();
+      cardWrong.classList.remove('highlight');
+      log('wrong', '⚠️ drop 事件也触发了，但你的代码绑定的是 drag！', 'error');
+      log('wrong', '所以 handleDrop 在放下时不会执行！', 'error');
+    });
+
+    // 全局阻止默认拖拽行为（防止浏览器打开文件）
+    document.addEventListener('dragover', (e) => {
+      if (!e.target.closest('.drop-zone')) e.preventDefault();
+    });
+    document.addEventListener('drop', (e) => {
+      if (!e.target.closest('.drop-zone')) e.preventDefault();
+    });
+
+    // ========== 模拟演示 ==========
+    function simulateCorrect() {
+      clearLog('correct');
+      const steps = [
+        { t: 300, type: 'dragover', msg: '文件悬停中...' },
+        { t: 600, type: 'dragover', msg: '文件悬停中...' },
+        { t: 900, type: 'dragover', msg: '文件悬停中...' },
+        { t: 1200, type: 'drop', msg: '✅ 成功接收 1 个文件: example.txt' },
+      ];
+      steps.forEach(s => {
+        setTimeout(() => {
+          if (s.type === 'drop') dropCount++;
+          updateCounters();
+          log('correct', s.msg, s.type);
+          if (s.type === 'drop') {
+            cardCorrect.classList.add('success');
+            setTimeout(() => cardCorrect.classList.remove('success'), 1000);
+          } else {
+            cardCorrect.classList.add('highlight');
+            setTimeout(() => cardCorrect.classList.remove('highlight'), 300);
+          }
+        }, s.t);
+      });
+    }
+
+    function simulateWrong() {
+      clearLog('wrong');
+      dragThrottle = 0;
+      const steps = [
+        { t: 200, type: 'drag', msg: 'drag 触发 #1（拖动中持续触发！）' },
+        { t: 400, type: 'drag', msg: 'drag 触发 #2（拖动中持续触发！）' },
+        { t: 600, type: 'drag', msg: 'drag 触发 #3（拖动中持续触发！）' },
+        { t: 800, type: 'drag', msg: 'drag 触发 #4（拖动中持续触发！）' },
+        { t: 1000, type: 'info', msg: '...drag 触发过于频繁，日志省略...' },
+        { t: 1300, type: 'error', msg: '⚠️ drop 事件也触发了，但你的代码绑定的是 drag！' },
+        { t: 1600, type: 'error', msg: '所以 handleDrop 在放下时不会执行！' },
+      ];
+      let count = 0;
+      steps.forEach(s => {
+        setTimeout(() => {
+          if (s.type === 'drag') { count++; dragCount++; }
+          updateCounters();
+          log('wrong', s.msg, s.type);
+          if (s.type === 'drag') {
+            cardWrong.classList.add('reject');
+            setTimeout(() => cardWrong.classList.remove('reject'), 200);
+          }
+        }, s.t);
+      });
+    }
+
+    // 初始化
+    log('correct', '👆 拖文件到上方区域，或点击"模拟演示"', 'info');
+    log('wrong', '👆 拖文件到上方区域，或点击"模拟演示"', 'info');
+  </script>
+</body>
+</html>

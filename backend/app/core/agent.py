@@ -10,16 +10,16 @@ from app.core.tools import get_all_tools,execute_tool
 from app.core.skill_loader import get_all_skills_meta
 
 
-load_dotenv()
+load_dotenv(override=True)
 
-BAILIAN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+BAILIAN_BASE_URL = "https://api.deepseek.com"
 
 
 def get_llm():
     return ChatOpenAI(
-        model="qwen3-max",
-        base_url=BAILIAN_BASE_URL,
-        api_key=os.getenv("DASHSCOPE_API_KEY"),
+        model="deepseek-v4-flash",
+        openai_api_base=BAILIAN_BASE_URL,
+        openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
         temperature=0.7,
     )
 
@@ -183,7 +183,7 @@ async def stream_with_tools(
         response = await llm_with_tool.ainvoke(messages)
         messages.append(response)
 
-        tool_calls = getattr(response,"tool_calls",[])
+        tool_calls = getattr(response,"tool_calls",{})
         if not tool_calls:
             break
 
@@ -202,10 +202,15 @@ async def stream_with_tools(
             messages.append(ToolMessage(content = tool_result,tool_call_id = tool_call_id))
 
         #确保最后一条是AImessage
-    async for chunk in llm.astream(messages):
-        content = chunk.content
-        if content:
-            yield content
+    if not isinstance(messages[-1], AIMessage):
+        response = await llm_with_tool.ainvoke(messages)
+        messages.append(response)
+
+        # 现在最后一条一定是 AIMessage，直接流式输出
+    messages.append(HumanMessage(content="重复上一条回复,不需要增加额外的内容,绝对不需要,只要回复跟上一条一模一样的内容就好"))
+    async for chunk in llm_with_tool.astream(messages):
+        if chunk.content:
+            yield chunk.content
 
 
 
