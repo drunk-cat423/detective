@@ -96,7 +96,7 @@ async def chat_with_tools(
     messages.append(HumanMessage(content = user_message))
 
     #设定最多循环次数,防止模型一直在调用模型
-    max_iteration = 5
+    max_iteration = 1
     for _ in range(max_iteration):
         #这里模型返回的天然就是AIMessage,所以不用包装
         response = await llm_with_tools.ainvoke(messages)
@@ -178,7 +178,7 @@ async def stream_with_tools(
             messages.append(AIMessage(content = msg["content"]))
     messages.append(HumanMessage(content = user_message))
 
-    max_iteration = 5
+    max_iteration = 3
     for i in range(max_iteration):
         response = await llm_with_tool.ainvoke(messages)
         messages.append(response)
@@ -201,16 +201,21 @@ async def stream_with_tools(
             )
             messages.append(ToolMessage(content = tool_result,tool_call_id = tool_call_id))
 
-        #确保最后一条是AImessage
-    if not isinstance(messages[-1], AIMessage):
-        response = await llm_with_tool.ainvoke(messages)
-        messages.append(response)
+    # 如果最后一条是AIMessage
+    if isinstance(messages[-1], AIMessage):
+        # 循环里已经拿到了最终回复，直接输出，不再调用模型
 
-        # 现在最后一条一定是 AIMessage，直接流式输出
-    messages.append(HumanMessage(content="重复上一条回复,不需要增加额外的内容,绝对不需要,只要回复跟上一条一模一样的内容就好"))
-    async for chunk in llm_with_tool.astream(messages):
-        if chunk.content:
-            yield chunk.content
+        content = messages[-1].content
+        # 此时已经拿到了回复,那就模拟流式输出返回结果
+        for char in content:
+            yield char
+            await asyncio.sleep(0.01)
+
+    # 最后一条是 ToolMessage，需要模型收口，用真流式生成
+    else:
+        async for chunk in llm_with_tool.astream(messages):
+            if chunk.content:
+                yield chunk.content
 
 
 

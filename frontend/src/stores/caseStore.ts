@@ -283,7 +283,7 @@ export const useCaseStore = defineStore('case', () => {
     }
   }
 
-  async function clearChatHistory(caseId: number) {
+  async function clearChatHistory(_caseId: number) {
     try {
       // 调用 API 清空历史
       // await clearAgentHistory(caseId)

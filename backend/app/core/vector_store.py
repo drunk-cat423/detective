@@ -61,7 +61,7 @@ def get_or_create_collection(case_id: int):
     return client.get_or_create_collection(name=collection_name)
 
 
-def embed_documents(texts: List[str], dimensions: int = 1024) -> List[List[float]]:
+def embed_documents(texts: List[str]) -> List[List[float]]:
     """
     每次最多处理 10 个文本
     """
@@ -81,12 +81,12 @@ def embed_documents(texts: List[str], dimensions: int = 1024) -> List[List[float
 
         # 按照输入顺序提取向量
         batch_vectors = [item.embedding for item in resp.data]
-        all_vectors.extend((batch_vectors))
+        all_vectors.extend(batch_vectors)
 
     return all_vectors
 
 
-def embed_query(query: str, dimensions: int = 1024) -> List[float]:
+def embed_query(query: str) -> List[float]:
     """为查询文本生成向量"""
     client = get_embedding_client()
     resp = client.embeddings.create(
