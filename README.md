@@ -8,8 +8,8 @@
 |------|------|
 | 前端 | Vue 3 + Vite + TypeScript + Pinia + Vue Router + @vue-flow/core + Axios + marked |
 | 后端 | FastAPI (异步) + Pydantic V2 + SQLAlchemy 2.0 (异步) + MySQL 8.0 |
-| AI 模型 | 阿里云百炼 Qwen3-Max（对话）、text-embedding-v4（向量化） |
-| Agent 框架 | LangChain（消息格式与流式）+ DashScope 原生 Embedding + MCP 原生客户端 |
+| AI 模型 | Deepseek-v4-flash |
+| Agent 框架 | LangChain（消息格式与流式）+ DashScope 原生 Embedding |
 | 向量数据库 | Chroma（持久化存储） |
 | 重排序 | BAAI/bge-reranker-base（Cross-Encoder 精排） |
 | 开发工具 | PyCharm (后端) + VS Code (前端) + Navicat (数据库) |
@@ -104,7 +104,7 @@ detective-assistant/
 
 ### 4. 文档上传与向量化（RAG）
 - 前端：文档 Tab 内提供文件拖拽/选择上传组件，支持 `.txt` 文件（UTF-8 编码）
-- 后端：接收文件 → 递归字符分块（优先级：段落→句子→词组）→ 调用 `text-embedding-v4` 向量化 → 存入 Chroma 向量库
+- 后端：接收文件 → 递归字符分块（优先级：段落→句子→词组）→ 调用模型向量化 → 存入 Chroma 向量库
 - 分块策略：`chunk_size=1200`, `chunk_overlap=150`
 - 同时记录文档信息到 `documents` 表（文件名、完整内容、分块数量）
 
