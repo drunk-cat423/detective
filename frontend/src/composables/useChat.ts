@@ -54,7 +54,7 @@ export function useChat(caseId: number) {
     scrollToBottom()
 
     try {
-      const response = await fetch(`http://127.0.0.1:8001/cases/${caseId}/agent/chat/stream`, {
+      const response = await fetch(`/api/cases/${caseId}/agent/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg }),

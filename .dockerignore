@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 环境变量（不同环境不同配置，通过 compose 注入）
+.env
+backend/.env
+
+# 数据库
+*.db
+*.sqlite3
+*.sqlite3-journal
+
+# IDE
+.idea/
+.vscode/
+
+# Chroma 向量数据（用 volume 挂载）
+backend/chroma_data/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Git
+.git/
+.gitignore
+
+# 文档
+README.md
+CLAUDE.md
+
+# 其他
+*.log
