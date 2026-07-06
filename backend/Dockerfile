@@ -2,11 +2,19 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# 使用 Debian 国内镜像源加速
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true && \
+    sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
+
 # 安装系统依赖（numpy / chromadb 编译需要）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# 配置 pip 国内镜像源
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip config set global.trusted-host mirrors.aliyun.com
 
 # 先装依赖（利用 Docker 缓存层）
 COPY requirements.txt .
