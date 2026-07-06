@@ -8,8 +8,8 @@
 |------|------|
 | 前端 | Vue 3 + Vite + TypeScript + Pinia + Vue Router + @vue-flow/core + Axios + marked |
 | 后端 | FastAPI (异步) + Pydantic V2 + SQLAlchemy 2.0 (异步) + MySQL 8.0 |
-| AI 模型 | Deepseek-v4-flash |
-| Agent 框架 | LangChain（消息格式与流式）+ DashScope 原生 Embedding |
+| AI 模型 | DeepSeek API（deepseek-v4-flash，对话）、SiliconFlow BAAI/bge-m3（向量化） |
+| Agent 框架 | LangChain + langchain-openai（ChatOpenAI 兼容客户端）+ 原生 MCP SDK（已禁用） |
 | 向量数据库 | Chroma（持久化存储） |
 | 重排序 | BAAI/bge-reranker-base（Cross-Encoder 精排） |
 | 开发工具 | PyCharm (后端) + VS Code (前端) + Navicat (数据库) |
@@ -49,9 +49,9 @@ detective-assistant/
 │   │   │   ├── documents.py       # 文档上传 + 向量化
 │   │   │   └── known_infos.py     # 已知信息 CRUD
 │   │   └── core/                  # 核心逻辑
-│   │       ├── agent.py           # Agent 引擎（Qwen3-Max + RAG + 工具调用循环）
+│   │       ├── agent.py           # Agent 引擎（DeepSeek + RAG + 工具调用循环）
 │   │       ├── vector_store.py    # Chroma 向量库 + Embedding + 重排序
-│   │       ├── tools.py           # 本地工具 + MCP 远程工具统一入口
+│   │       ├── tools.py           # 本地工具定义与统一执行入口（MCP 已禁用）
 │   │       ├── skill_loader.py    # 技能系统（YAML frontmatter 插件化）
 │   │       └── reranker.py        # Cross-Encoder 重排序（可选）
 │   ├── alembic/                   # 数据库迁移
@@ -104,7 +104,7 @@ detective-assistant/
 
 ### 4. 文档上传与向量化（RAG）
 - 前端：文档 Tab 内提供文件拖拽/选择上传组件，支持 `.txt` 文件（UTF-8 编码）
-- 后端：接收文件 → 递归字符分块（优先级：段落→句子→词组）→ 调用模型向量化 → 存入 Chroma 向量库
+- 后端：接收文件 → 递归字符分块（优先级：段落→句子→词组）→ 调用 `BAAI/bge-m3` 向量化 → 存入 Chroma 向量库
 - 分块策略：`chunk_size=1200`, `chunk_overlap=150`
 - 同时记录文档信息到 `documents` 表（文件名、完整内容、分块数量）
 
@@ -119,9 +119,8 @@ detective-assistant/
 ### 6. Agent 对话（真流式输出）
 - **真流式 SSE**：`llm.astream()` 逐字输出，非伪流式
 - **工具调用循环**：
-  - 模型最多循环 5 轮，自动调用工具获取信息
+  - 普通对话最多循环 1 轮，流式对话最多循环 3 轮，自动调用工具获取信息
   - 本地工具：搜索便签、获取时间线、获取已知信息、搜索文档、加载技能
-  - 远程工具：MCP 必应搜索（带失败降级）
   - 工具调用中间过程对用户不可见，只流式输出最终回答
 - **RAG 检索**：自动从已上传文档中检索相关片段，注入 Prompt
 - **受限推理**：仅基于当前案件的便签、时间线、已知信息、相关文本片段
@@ -163,7 +162,8 @@ pip install numpy==1.26.4
 
 ```bash
 DATABASE_URL=mysql+aiomysql://用户名:密码@localhost:3306/detective_db
-DASHSCOPE_API_KEY=你的阿里云百炼API_KEY
+DEEPSEEK_API_KEY=你的DeepSeek_API_KEY
+SILICONFLOW_API_KEY=你的硅基流动API_KEY
 CHROMA_PERSIST_DIRECTORY=./chroma_data
 SECRET_KEY=任意随机字符串
 
@@ -195,7 +195,7 @@ npm run dev
 ## 快速启动清单
 
 1. 确保 MySQL 运行，数据库 `detective_db` 已创建
-2. `.env` 已配置 `DASHSCOPE_API_KEY`
+2. `.env` 已配置 `DEEPSEEK_API_KEY` 和 `SILICONFLOW_API_KEY`
 3. `cd backend && uvicorn app.main:app --reload --port 8001`
 4. `cd frontend && npm run dev`
 5. 浏览器打开 `http://localhost:5173`
@@ -240,9 +240,9 @@ npm run dev
 - 技能与工具解耦，技能是"工作流"，工具是"能力"
 
 ### 4. 统一工具执行入口
-- 本地工具和 MCP 远程工具通过统一接口调用
-- 自动区分 `is_remote`，调用方无感知
-- MCP 失败时自动降级，不影响主流程
+- 所有工具通过 `execute_tool()` 统一分发，调用方无感知
+- 工具元数据集中定义在 `LOCAL_TOOLS_META`，包含名称、描述、JSON Schema、Pydantic 校验模型和执行函数
+- 架构上预留了 `is_remote` 标记支持远程工具扩展（MCP 目前因稳定性问题已禁用）
 
 ### 5. 数据层与运行时层解耦
 - 数据库用简单的 `AgentMessage` 存原始数据
@@ -261,7 +261,7 @@ npm run dev
 8. **嫌疑人姓名**：涉及 `NoteCreate`、`NoteUpdate`、`NoteOut` 三个 Schema 及数据库列，缺一不可
 9. **流式对话会话安全**：`agent_chat_stream` 内部用独立 `async_session()` 保存助手消息
 10. **文档上传**：仅支持 UTF-8 编码的 `.txt` 文件，单次上传大小受 FastAPI 默认限制（16MB）
-11. **MCP 调用**：MCP 工具不太稳定，有时输出结果跟提问内容无关，已做失败降级
+11. **MCP 调用**：MCP 远程工具目前已被禁用（注释掉），因其输出不稳定，与提问内容无关
 12. **重排序模型**：首次加载需下载 ~1.1GB 模型，建议配置 `RERANKER_MODEL_PATH` 使用本地路径
 13. **模型缓存**：`sentence-transformers` 默认缓存到系统目录，生产环境建议通过环境变量或 Docker 镜像预装
 
