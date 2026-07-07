@@ -6,8 +6,6 @@ from app.models.timeline_event import TimelineEvent
 from app.models.known_info import KnownInfo
 from app.core.vector_store import search_documents
 import os
-from mcp import ClientSession
-from mcp.client.sse import sse_client
 from pydantic import BaseModel,Field
 from app.core.skill_loader import load_skill_content
 
