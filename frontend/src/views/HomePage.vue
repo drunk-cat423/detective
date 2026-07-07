@@ -1,6 +1,9 @@
 <template>
   <div class="home">
-    <h1>案件管理</h1>
+    <div class="header">
+      <h1>案件管理</h1>
+      <button v-if="showLogout" class="logout-btn" @click="handleLogout">退出登录</button>
+    </div>
 
     <!-- 新建区域 -->
     <div class="create-form">
@@ -38,6 +41,13 @@ import { getCases, createCase ,deleteCaseApi} from '@/api/index'
 
 const cases = ref<any[]>([])        // 案件列表
 const newCaseName = ref('')         // 输入框内容
+const showLogout = localStorage.getItem('auth_enabled') === 'true'
+
+const handleLogout = () => {
+  localStorage.removeItem('auth_token')
+  localStorage.removeItem('auth_enabled')
+  window.location.href = '/login'
+}
 
 const fetchCases = async () => {
   try {
@@ -78,6 +88,30 @@ onMounted(fetchCases)
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.header h1 {
+  margin: 0;
+}
+.logout-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  color: #666;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.logout-btn:hover {
+  background: #f5f5f5;
+  color: #c62828;
+  border-color: #c62828;
 }
 .create-form {
   display: flex;

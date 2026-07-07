@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")
     siliconflow_api_key: str = os.getenv("SILICONFLOW_API_KEY", "")
 
+    # 登录认证配置
+    auth_enabled: bool = os.getenv("AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
+    auth_password: str = os.getenv("AUTH_PASSWORD", "")
+    auth_secret_key: str = os.getenv("AUTH_SECRET_KEY", "change-me-to-a-random-secret-key")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
