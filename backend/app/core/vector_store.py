@@ -1,17 +1,12 @@
 import os
 import logging
 import uuid
+import httpx
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from dotenv import load_dotenv
 from openai import OpenAI
 from typing import List, Optional
-from pathlib import Path
-
-MODEL_PATH = Path(__file__).resolve().parent.parent.parent.parent / "models" / "bge-reranker-base"
-
-#
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 load_dotenv(override=True)
 
@@ -19,16 +14,14 @@ logger = logging.getLogger(__name__)
 
 PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_data")
 
-# 配置  API Key
+# SiliconFlow API 配置
 SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY")
 SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 EMBEDDING_MODEL = "BAAI/bge-m3"
+RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
 
 _embedding_client = None
-
-
 _chroma_client = None
-_reranker = None
 
 
 
@@ -95,25 +88,47 @@ def embed_query(query: str) -> List[float]:
     )
     return resp.data[0].embedding
 
-#重排序逻辑
-def get_reranker():
-    global _reranker
-    if _reranker is None:
-        try:
-            from sentence_transformers import CrossEncoder
-            _reranker = CrossEncoder(str(MODEL_PATH))
-            logger.info("重排序模型加载成功")
-        except Exception as e:
-            logger.error(f"重排序模型加载失败:{e}")
-            raise
-        return _reranker
-def preload_reranker():
-    """在整个服务启动时先预加载"""
+# 重排序逻辑 - 调用 SiliconFlow Rerank API
+def rerank_documents(query: str, documents: List[str], top_k: int = 5) -> List[str]:
+    """使用 SiliconFlow Rerank API 对文档进行重排序"""
+    if not documents:
+        return documents
+
+    if not SILICONFLOW_API_KEY:
+        logger.warning("未配置 SILICONFLOW_API_KEY，跳过重排序")
+        return documents[:top_k]
+
     try:
-        get_reranker()
-        logger.info("重排序模型预加载完成")
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(
+                f"{SILICONFLOW_BASE_URL}/rerank",
+                headers={
+                    "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": RERANK_MODEL,
+                    "query": query,
+                    "documents": documents,
+                    "top_n": top_k,
+                    "return_documents": True,
+                }
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            # 根据 index 从原 documents 中取出重排序后的结果
+            results = data.get("results", [])
+            reranked = []
+            for r in results:
+                idx = r["index"]
+                reranked.append(documents[idx])
+
+            logger.info(f"Rerank API 重排序完成，返回 {len(reranked)} 条")
+            return reranked[:top_k]
     except Exception as e:
-        logger.warning(f"重排序模型预加载失败:{e}")
+        logger.error(f"Rerank API 调用失败: {e}")
+        return documents[:top_k]
 
 
 def add_documents(case_id: int, texts: List[str], metadatas: Optional[List[dict]] = None,
@@ -174,23 +189,8 @@ def search_documents(case_id: int, query: str, k: int = 5) -> List[str]:
             return []
         documents = results["documents"][0]
 
-        #如果召回小于等于五条,则不用排序
-        if len(documents)<=5:
-            return documents[:k*2]
-
-        #使用重排序
-        try:
-            reranker = get_reranker()
-            pairs = [[query,doc] for doc in documents]
-            scores = reranker.predict(pairs)
-
-            scored_docs = list(zip(documents,scores))
-            scored_docs.sort(key = lambda x :x[1],reverse=True)
-
-            logger.info(f"重排序完成")
-            return [doc for doc,score in scored_docs[:k]]
-        except Exception as e:
-            logger.error(f"重排序失败,返回原始检索内容.错误信息:{e}")
+        # 使用 API 重排序
+        return rerank_documents(query, documents, top_k=k)
 
 
     except Exception as e:

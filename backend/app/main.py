@@ -1,11 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.vector_store import preload_reranker
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app:FastAPI):
-    preload_reranker()
     yield
 
 
@@ -19,8 +17,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-#服务启动时加载重排序器
 
 
 
