@@ -78,10 +78,10 @@ export const getDocument = (caseId:number) =>
 
 //已知信息相关api
 export const getKnownInfos = (caseId:number) =>
-  api.get(`/cases/${caseId}/known-infos`)
+  api.get(`/cases/${caseId}/known-infos/`)
 
 export const createKnownInfo = (caseId:number,content:string) =>
-  api.post(`/cases/${caseId}/known-infos`,{content})
+  api.post(`/cases/${caseId}/known-infos/`,{content})
 
 export const updateKnownInfo = (caseId:number,infoId:number,content:string) =>
   api.put(`/cases/${caseId}/known-infos/${infoId}`,{content})
