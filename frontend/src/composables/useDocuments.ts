@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { uploadDocument, getDocument } from '@/api/index'
+import { uploadDocument, getDocument, deleteDocument } from '@/api/index'
 
 export function useDocuments(caseId: number) {
   const fileInput = ref<HTMLInputElement | null>(null)
@@ -52,6 +52,17 @@ export function useDocuments(caseId: number) {
     }
   }
 
+  async function removeDocument(filename: string) {
+    if (!confirm(`确定删除「${filename}」吗？删除后 AI 将无法检索此文档内容。`)) return
+    try {
+      await deleteDocument(caseId, filename)
+      await loadDocuments()
+    } catch (err: any) {
+      console.error('删除文档失败', err)
+      alert(err.response?.data?.detail || '删除失败')
+    }
+  }
+
   return {
     fileInput,
     uploading,
@@ -60,5 +71,6 @@ export function useDocuments(caseId: number) {
     triggerFileInput,
     handleFileSelect,
     handleDrop,
+    removeDocument,
   }
 }

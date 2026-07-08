@@ -99,6 +99,9 @@ export const uploadDocument = (caseId:number,file:File) =>{
 export const getDocument = (caseId:number) =>
   api.get(`/cases/${caseId}/documents/`)
 
+export const deleteDocument = (caseId: number, filename: string) =>
+  api.delete(`/cases/${caseId}/documents/${encodeURIComponent(filename)}`)
+
 //已知信息相关api
 export const getKnownInfos = (caseId:number) =>
   api.get(`/cases/${caseId}/known-infos/`)

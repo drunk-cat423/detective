@@ -22,8 +22,9 @@
     <div v-if="docList.length > 0" class="doc-list">
       <h4>已上传文档</h4>
       <ul>
-        <li v-for="doc in docList" :key="doc.id">
-          {{ doc.filename }}
+        <li v-for="doc in docList" :key="doc.filename">
+          <span class="doc-name">{{ doc.filename }}</span>
+          <button class="doc-delete-btn" @click.stop="$emit('remove', doc.filename)" title="删除文档">✕</button>
         </li>
       </ul>
     </div>
@@ -40,6 +41,7 @@ defineEmits<{
   'trigger': []
   'file-select': [event: Event]
   'drop': [event: DragEvent]
+  'remove': [filename: string]
 }>()
 
 const fileInputRef = defineModel<HTMLInputElement | null>('fileInputRef', { default: null })
@@ -121,6 +123,34 @@ function setFileInputRef(el: Element | any | null) {
   font-size: 13px;
   color: var(--text);
   border-left: 3px solid var(--gold);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.doc-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-delete-btn {
+  background: none;
+  border: none;
+  color: #c0392b;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.doc-delete-btn:hover {
+  opacity: 1;
+  background: rgba(192, 57, 43, 0.1);
 }
 
 .upload-progress {

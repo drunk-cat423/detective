@@ -101,6 +101,16 @@ composables/            ← 按功能拆分的组合式 API（Vue 3 逻辑复用
 
 技能以文件夹形式存放在 `backend/skills/`，每个技能一个 `SKILL.md`（YAML frontmatter + Markdown 正文）。`skill_loader.py` 扫描目录提取元数据注入 System Prompt，模型通过 `load_skill` 工具按需加载正文，避免 Prompt 膨胀。技能元数据有缓存，服务启动后只在首次请求时扫描一次。
 
+## 稳定性原则
+
+**对 GitHub 或全局有影响的操作必须三思而后行。** 包括但不限于：
+- 修改 `.gitignore`、提交/推送代码
+- 安装全局依赖、修改环境变量
+- 修改数据库迁移、删除文件等不可逆操作
+- 安装或卸载全局 skill、修改用户级配置
+
+执行前先思考：这个操作会影响什么？是否可逆？会不会影响项目稳定性？不确定时先问用户确认。
+
 ## 注意事项
 
 - **NumPy 版本**：必须为 1.26.4，Chroma 0.5.0 不兼容 NumPy 2.x 的 `np.float_` 移除。

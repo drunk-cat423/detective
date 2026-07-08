@@ -4,8 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.database import async_session
 from app.models.agent_message import AgentMessage
-from app.core.agent import chat_with_tools,stream_with_tools
+from app.core.agent import chat_with_tools, stream_with_tools, summarize_and_prune
 from pydantic import BaseModel
+import asyncio
 
 router = APIRouter(prefix="/cases/{case_id}/agent", tags=["agent"])
 
@@ -82,6 +83,9 @@ async def agent_chat_stream(
         await db.commit()
 
         yield "data: [DONE]\n\n"
+
+        # 后台触发摘要和画像更新（不影响用户）
+        asyncio.create_task(summarize_and_prune(case_id))
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

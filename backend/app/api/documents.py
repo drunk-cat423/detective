@@ -1,17 +1,9 @@
-from fastapi import APIRouter,Depends,HTTPException,UploadFile,File
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.database import async_session
-from app.models.document import Document
-from app.core.vector_store import add_documents
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from app.core.vector_store import add_documents, delete_documents_by_metadata, list_documents_by_case
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-router = APIRouter(prefix="/cases/{case_id}/documents",tags=["documents"])
-
-async def get_db():
-    async with async_session() as session:
-        yield session
+router = APIRouter(prefix="/cases/{case_id}/documents", tags=["documents"])
 
 def chunk_text(text:str,chunk_size:int = 1200,overlap:int = 150) ->list[str]:
     """
@@ -45,62 +37,46 @@ def chunk_text(text:str,chunk_size:int = 1200,overlap:int = 150) ->list[str]:
 
 @router.post("/upload")
 async def upload_document(
-        case_id :int,
-        file : UploadFile = File(...),
-        db: AsyncSession = Depends(get_db)
+        case_id: int,
+        file: UploadFile = File(...),
 ):
-    #类型判断
+    # 类型判断
     if not file.filename.endswith('.txt'):
-        raise HTTPException(status_code=400,detail = "抱歉,目前仅支持txt文件")
+        raise HTTPException(status_code=400, detail="抱歉,目前仅支持txt文件")
 
-    #读取内容
+    # 读取内容
     content = await file.read()
     try:
         text = content.decode('utf-8')
     except UnicodeError:
-        raise HTTPException(status_code=400,detail = "请确认文件编码为utf-8")
+        raise HTTPException(status_code=400, detail="请确认文件编码为utf-8")
 
-
-    #分块
+    # 分块
     chunks = chunk_text(text)
     if not chunks:
-        raise HTTPException(status_code=400,detail="文件为空或无法分割")
+        raise HTTPException(status_code=400, detail="文件为空或无法分割")
 
-    #存入chroma,压缩工作在add_documents里完成
+    # 只存 Chroma，不再存 MySQL
     metadatas = [
-        {"case_id":case_id,
-         "filename":file.filename,
-         "chunk_index":i,
-         "chunk_len":len(chunk)
-         }
-         for i,chunk in enumerate(chunks) ]
-    add_documents(case_id,chunks,metadatas =metadatas)
+        {"case_id": case_id,
+         "filename": file.filename,
+         "chunk_index": i,
+         "chunk_len": len(chunk)}
+        for i, chunk in enumerate(chunks)
+    ]
+    add_documents(case_id, chunks, metadatas=metadatas)
 
-    #存入mysql数据库
-    doc = Document(
-        case_id = case_id,
-        filename = file.filename,
-        chunk_count = len(chunks),
-        content = file.filename
-    )
-    db.add(doc)
-    await db.commit()
-    await db.refresh(doc)
-    return {"id":doc.id,"filename":doc.filename,"chunk_count":doc.chunk_count}
+    return {"filename": file.filename, "chunk_count": len(chunks)}
+
 
 @router.get("/")
-async def list_documents(case_id:int,db:AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Document).where(Document.case_id == case_id).order_by(Document.created_at.desc())
-    )
-    docs = result.scalars().all()
-    return [
-        {
-            "id":d.id,
-            "filename":d.filename,
-            "chunk_count":d.chunk_count,
-            "created_at":d.created_at.isoformat() if d.created_at else None
-        }
-        for d in docs
-    ]
+async def list_documents(case_id: int):
+    docs = list_documents_by_case(case_id)
+    return docs
+
+
+@router.delete("/{filename}", status_code=204)
+async def delete_document(case_id: int, filename: str):
+    delete_documents_by_metadata(case_id, filename)
+    return None
 

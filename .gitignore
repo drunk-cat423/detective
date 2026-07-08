@@ -21,3 +21,6 @@ backend/chroma_data/
 *.bin
 
 models/
+
+# Claude Code 本地配置（settings + 用户级 skills 链接）
+.claude/

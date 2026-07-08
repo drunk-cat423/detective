@@ -1,3 +1,4 @@
+import logging
 from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,8 +7,10 @@ from app.models.timeline_event import TimelineEvent
 from app.models.known_info import KnownInfo
 from app.core.vector_store import search_documents
 import os
-from pydantic import BaseModel,Field
+from pydantic import BaseModel, Field
 from app.core.skill_loader import load_skill_content
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -48,6 +51,10 @@ class WebSearchInput(BaseModel):
 
 class LoadSkillInput(BaseModel):
     skill_name : str = Field(description="要加载的技能名称,例如'motivation_analysis'")
+
+class RecordFindingInput(BaseModel):
+    """record_finding 工具的参数"""
+    finding: str = Field(description="重要的推理结论、关键证据或矛盾点")
 
 
 
@@ -120,6 +127,21 @@ async def load_skill(skill_name:str,db:AsyncSession=None,case_id:int = None)-> s
         return content
     except ValueError as e:
         return f"错误: {str(e)}"
+
+
+# 工具函数: 记录重要推理结论到已知信息
+async def record_finding(finding: str, db: AsyncSession, case_id: int) -> str:
+    """将 AI 判断为关键的推理结论写入已知信息"""
+    try:
+        new_info = KnownInfo(case_id=case_id, content=finding)
+        db.add(new_info)
+        await db.commit()
+        await db.refresh(new_info)
+        logger.info(f"[record_finding] case {case_id} 新增已知信息: {finding[:50]}...")
+        return f"已记录推理结论：「{finding}」"
+    except Exception as e:
+        await db.rollback()
+        return f"记录失败: {str(e)}"
 
 
 
@@ -212,7 +234,15 @@ LOCAL_TOOLS_META = [
         "input_model":LoadSkillInput,
         "func":load_skill,
         "is_remote":False,
-    }
+    },
+    {
+        "name": "record_finding",
+        "description": "记录一个重要的推理结论到已知信息中。当你发现了一个关键的推理结果、矛盾点、重要证据或案件关键突破时，调用此工具。用户可以随时在已知信息板块查看",
+        "parameters": RecordFindingInput.model_json_schema(),
+        "input_model": RecordFindingInput,
+        "func": record_finding,
+        "is_remote": False,
+    },
 ]
 
 

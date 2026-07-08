@@ -94,6 +94,7 @@
           @trigger="triggerFileInput"
           @file-select="handleFileSelect"
           @drop="handleDrop"
+          @remove="removeDocument"
         />
 
         <!-- 已知信息 Tab -->
@@ -173,7 +174,7 @@ const {
 // Documents composable
 const {
   fileInput, uploading, docList,
-  loadDocuments, triggerFileInput, handleFileSelect, handleDrop,
+  loadDocuments, triggerFileInput, handleFileSelect, handleDrop, removeDocument,
 } = useDocuments(caseId)
 
 // 当展开聊天面板时自动滚动到底部

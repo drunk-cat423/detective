@@ -1,18 +1,27 @@
 import os
 import asyncio
-from typing import AsyncGenerator,List,Dict,Any
+import json
+import logging
+from typing import AsyncGenerator, List, Dict, Any
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from langchain_core.messages import HumanMessage,AIMessage,SystemMessage,ToolMessage
-from app.core.tools import get_all_tools,execute_tool
+from sqlalchemy import select, delete, func
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from app.core.tools import get_all_tools, execute_tool
 from app.core.skill_loader import get_all_skills_meta
-
+from app.database import async_session
+from app.models.agent_message import AgentMessage
+from app.core.vector_store import get_memory, update_memory, add_memory, search_memories
 
 load_dotenv(override=True)
 
+logger = logging.getLogger(__name__)
+
 BAILIAN_BASE_URL = "https://api.deepseek.com"
+
+# per-case 锁，防止重复做摘要
+_summarization_locks: Dict[int, bool] = {}
 
 
 def get_llm():
@@ -55,6 +64,117 @@ def build_system_prompt() ->str:
 
     return base_prompt+skills_text
 
+
+async def summarize_and_prune(case_id: int):
+    """后台任务：对话摘要 + 画像更新 + 历史修剪。
+    在 SSE 流结束后运行，不影响用户正常对话。
+    摘要和画像更新合并到一次 LLM 调用。
+    """
+    if _summarization_locks.get(case_id, False):
+        logger.info(f"[摘要] 已在进行中，跳过 case {case_id}")
+        return
+    _summarization_locks[case_id] = True
+
+    try:
+        async with async_session() as db:
+            # 1. 统计对话总轮数
+            result = await db.execute(
+                select(func.count()).select_from(AgentMessage)
+                .where(AgentMessage.case_id == case_id)
+            )
+            total = result.scalar()
+            SUMMARY_THRESHOLD = 30
+            RETAIN_COUNT = 20
+
+            if total <= SUMMARY_THRESHOLD:
+                logger.info(f"[摘要] case {case_id} 共 {total} 轮，未达阈值 {SUMMARY_THRESHOLD}，跳过")
+                return
+
+            # 2. 取出需要摘要的旧消息
+            to_summarize = total - RETAIN_COUNT
+            result = await db.execute(
+                select(AgentMessage)
+                .where(AgentMessage.case_id == case_id)
+                .order_by(AgentMessage.created_at)
+                .limit(to_summarize)
+            )
+            old_messages = result.scalars().all()
+
+            # 3. 格式化对话文本
+            conversation_text = ""
+            for msg in old_messages:
+                role_label = "用户" if msg.role == "user" else "助手"
+                conversation_text += f"[{role_label}]\n{msg.content}\n\n"
+
+            # 4. 从 Chroma 读取当前画像
+            user_profile = get_memory("user_profile_global") or "（尚未建立）"
+            ai_profile = get_memory("ai_profile_global") or "（尚未建立）"
+
+            # 5. 一次 LLM 调用：摘要 + 画像更新判断
+            llm = get_llm()
+            summary_prompt = f"""你正在分析一段推理助手与用户的对话历史。
+
+当前用户画像：{user_profile}
+当前 AI 画像：{ai_profile}
+
+需要处理的对话：
+{conversation_text}
+
+请输出严格的 JSON（不要加任何多余文字），格式如下：
+{{
+  "summary": "这段对话的要点摘要，50-200字",
+  "user_profile_update": null,
+  "ai_profile_update": null
+}}
+
+- summary：必填，简洁概括这段对话中讨论的推理内容、关键线索和结论
+- user_profile_update：如果这段对话揭示了用户的偏好、习惯、推理风格等新特征，填写需要添加到用户画像的内容；否则填 null
+- ai_profile_update：如果这段对话中 AI 表现出了需要记录的特征变化，填写需要添加到 AI 画像的内容；否则填 null
+"""
+            response = await llm.ainvoke(summary_prompt)
+            # 鲁棒解析：去掉可能的 markdown 代码块标记
+            raw = response.content.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[-1] if "\n" in raw else raw[3:]
+            if raw.endswith("```"):
+                raw = raw.rsplit("```", 1)[0]
+            raw = raw.strip()
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                logger.error(f"[摘要] LLM 返回不是合法 JSON: {response.content[:200]}")
+                # 降级：整个当摘要存
+                parsed = {"summary": response.content[:500], "user_profile_update": None, "ai_profile_update": None}
+
+            # 6. 存摘要到 Chroma
+            summary_text = parsed.get("summary", response.content[:500])
+            add_memory(case_id=case_id, memory_type="conversation_summary", content=summary_text)
+
+            # 7. 更新画像
+            if parsed.get("user_profile_update"):
+                merged = f"{user_profile}\n{parsed['user_profile_update']}"
+                update_memory("user_profile_global", merged)
+                logger.info(f"[画像] 用户画像已更新")
+
+            if parsed.get("ai_profile_update"):
+                merged = f"{ai_profile}\n{parsed['ai_profile_update']}"
+                update_memory("ai_profile_global", merged)
+                logger.info(f"[画像] AI 画像已更新")
+
+            # 8. 从 MySQL 删除已被摘要的旧消息
+            old_ids = [msg.id for msg in old_messages]
+            await db.execute(
+                delete(AgentMessage).where(AgentMessage.id.in_(old_ids))
+            )
+            await db.commit()
+            logger.info(f"[摘要] case {case_id} 完成：删除了 {len(old_ids)} 条旧消息")
+
+    except Exception as e:
+        logger.error(f"[摘要] case {case_id} 失败: {e}", exc_info=True)
+    finally:
+        _summarization_locks[case_id] = False
+
+
 #对话函数
 async def chat_with_tools(
         case_id:int,
@@ -85,6 +205,18 @@ async def chat_with_tools(
 
     #构建系统提示词
     system_prompt = build_system_prompt()
+
+    # 注入画像和相关记忆（带 [xxx] 标签）
+    try:
+        user_profile = get_memory("user_profile_global") or "（尚未建立）"
+        ai_profile = get_memory("ai_profile_global") or "（尚未建立）"
+        memories = search_memories(user_message, case_id, k=3)
+        extra = f"\n\n[AI画像]\n{ai_profile}\n\n[用户画像]\n{user_profile}\n\n"
+        if memories:
+            extra += "[相关记忆]\n" + "\n".join(f"- {m}" for m in memories) + "\n"
+        system_prompt += extra
+    except Exception as e:
+        logger.warning(f"加载画像/记忆失败（不影响对话）: {e}")
 
     #这里注意history是从数据库拿出来的,类型是字典,所以需要用HumanMessage之类的包装一下
     messages = [SystemMessage(content = system_prompt)]
@@ -169,6 +301,18 @@ async def stream_with_tools(
         })
     llm_with_tool = llm.bind_tools(openai_tools)
     system_prompt = build_system_prompt()
+
+    # 注入画像和相关记忆（带 [xxx] 标签）
+    try:
+        user_profile = get_memory("user_profile_global") or "（尚未建立）"
+        ai_profile = get_memory("ai_profile_global") or "（尚未建立）"
+        memories = search_memories(user_message, case_id, k=3)
+        extra = f"\n\n[AI画像]\n{ai_profile}\n\n[用户画像]\n{user_profile}\n\n"
+        if memories:
+            extra += "[相关记忆]\n" + "\n".join(f"- {m}" for m in memories) + "\n"
+        system_prompt += extra
+    except Exception as e:
+        logger.warning(f"加载画像/记忆失败（不影响对话）: {e}")
 
     messages = [SystemMessage(content = system_prompt)]
     for msg in history:
