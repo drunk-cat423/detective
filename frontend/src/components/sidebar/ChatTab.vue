@@ -91,9 +91,15 @@ function scrollToBottom() {
   })
 }
 
+// 监听长度变化（新消息）
 watch(() => props.chatHistory.length, () => {
   scrollToBottom()
 })
+
+// 深度监听内容变化（SSE 流式追加时自动下滑）
+watch(() => props.chatHistory, () => {
+  scrollToBottom()
+}, { deep: true })
 
 watch(() => props.isThinking, (thinking) => {
   if (!thinking) {

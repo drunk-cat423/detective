@@ -33,9 +33,12 @@ export function useChat(caseId: number) {
   }
 
   function scrollToBottom() {
-    if (chatMessages.value) {
-      chatMessages.value.scrollTop = chatMessages.value.scrollHeight
-    }
+    nextTick(() => {
+      const el = document.querySelector('.chat-messages')
+      if (el) {
+        el.scrollTop = el.scrollHeight
+      }
+    })
   }
 
   async function sendMessage() {
