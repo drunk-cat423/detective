@@ -84,7 +84,7 @@ async def summarize_and_prune(case_id: int):
             )
             total = result.scalar()
             SUMMARY_THRESHOLD = 30
-            RETAIN_COUNT = 20
+            RETAIN_COUNT = 10
 
             if total <= SUMMARY_THRESHOLD:
                 logger.info(f"[摘要] case {case_id} 共 {total} 轮，未达阈值 {SUMMARY_THRESHOLD}，跳过")
@@ -132,7 +132,7 @@ async def summarize_and_prune(case_id: int):
 - ai_profile_update：如果这段对话中 AI 表现出了需要记录的特征变化，填写需要添加到 AI 画像的内容；否则填 null
 """
             response = await llm.ainvoke(summary_prompt)
-            # 鲁棒解析：去掉可能的 markdown 代码块标记
+            # 去掉可能的 markdown 代码块标记
             raw = response.content.strip()
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[-1] if "\n" in raw else raw[3:]
