@@ -90,7 +90,7 @@ onMounted(async () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
+  min-height: calc(100vh - 44px);
   background: linear-gradient(135deg, #FFF8E8 0%, #FFF5D6 50%, #FFFBF0 100%);
 }
 
