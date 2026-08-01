@@ -114,23 +114,23 @@ async def summarize_and_prune(case_id: int):
             llm = get_llm()
             summary_prompt = f"""你正在分析一段推理助手与用户的对话历史。
 
-当前用户画像：{user_profile}
-当前 AI 画像：{ai_profile}
+                当前用户画像：{user_profile}
+                当前 AI 画像：{ai_profile}
 
-需要处理的对话：
-{conversation_text}
+                需要处理的对话：
+                {conversation_text}
 
-请输出严格的 JSON（不要加任何多余文字），格式如下：
-{{
-  "summary": "这段对话的要点摘要，50-200字",
-  "user_profile_update": null,
-  "ai_profile_update": null
-}}
+                请输出严格的 JSON（不要加任何多余文字），格式如下：
+                {{
+                "summary": "这段对话的要点摘要，50-200字",
+                "user_profile_update": null,
+                "ai_profile_update": null
+                }}
 
-- summary：必填，简洁概括这段对话中讨论的推理内容、关键线索和结论
-- user_profile_update：如果这段对话揭示了用户的偏好、习惯、推理风格等新特征，填写需要添加到用户画像的内容；否则填 null
-- ai_profile_update：如果这段对话中 AI 表现出了需要记录的特征变化，填写需要添加到 AI 画像的内容；否则填 null
-"""
+                - summary：必填，简洁概括这段对话中讨论的推理内容、关键线索和结论
+                - user_profile_update：如果这段对话揭示了用户的偏好、习惯、推理风格等新特征，填写需要添加到用户画像的内容；否则填 null
+                - ai_profile_update：如果这段对话中 AI 表现出了需要记录的特征变化，填写需要添加到 AI 画像的内容；否则填 null
+                """
             response = await llm.ainvoke(summary_prompt)
             # 去掉可能的 markdown 代码块标记
             raw = response.content.strip()
