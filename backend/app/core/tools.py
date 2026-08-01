@@ -50,7 +50,7 @@ class WebSearchInput(BaseModel):
     offset: int = Field(default=0, description="从第几条结果开始，用于翻页，默认0")
 
 class LoadSkillInput(BaseModel):
-    skill_name : str = Field(description="要加载的技能名称,例如'motivation_analysis'")
+    skill_name : str = Field(description="要加载的技能名称,例如'motivation-analysis'")
 
 class RecordFindingInput(BaseModel):
     """record_finding 工具的参数"""

@@ -1,5 +1,5 @@
 ---
-name: contradiction_detection
+name: contradiction-detection
 description: 检测便签、时间线、已知信息之间的矛盾点。
 version: 1.0.0
 tools_required:

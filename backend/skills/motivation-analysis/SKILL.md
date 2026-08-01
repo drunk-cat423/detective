@@ -1,5 +1,5 @@
 ---
-name: motivation_analysis
+name: motivation-analysis
 description: 分析嫌疑人的作案动机,按步骤列出可能的动机列表
 version: 1.0.0
 tools_required:
