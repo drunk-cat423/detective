@@ -20,6 +20,11 @@ SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 EMBEDDING_MODEL = "BAAI/bge-m3"
 RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
 
+# ===== 方案 C：子块检索 + 上下文窗口 =====
+CHILD_SIZE_THRESHOLD = 500      # 块长度超过它视为"大块"（旧数据），邻居半径降为 0
+WINDOW_RADIUS = 1               # 命中块前后各取 1 个邻居
+MAX_WINDOW_TOTAL_CHARS = 3000   # 注入 LLM 的窗口总字数上限
+
 _embedding_client = None
 _chroma_client = None
 
@@ -90,14 +95,19 @@ def embed_query(query: str) -> List[float]:
     return resp.data[0].embedding
 
 # 重排序逻辑 - 调用 SiliconFlow Rerank API
-def rerank_documents(query: str, documents: List[str], top_k: int = 5) -> List[str]:
-    """使用 SiliconFlow Rerank API 对文档进行重排序"""
+def rerank_documents(query: str, documents: List[str], top_k: int = 5, return_indices: bool = False):
+    """使用 SiliconFlow Rerank API 对文档进行重排序。
+
+    return_indices=True 时返回 (重排序文本列表, 各文本在原 documents 中的下标)，
+    调用方可用下标反查 metadata（方案 C 建上下文窗口时需要）。
+    """
     if not documents:
-        return documents
+        return ([], []) if return_indices else documents
 
     if not SILICONFLOW_API_KEY:
         logger.warning("未配置 SILICONFLOW_API_KEY，跳过重排序")
-        return documents[:top_k]
+        top = documents[:top_k]
+        return (top, list(range(len(top)))) if return_indices else top
 
     try:
         with httpx.Client(timeout=30) as client:
@@ -118,18 +128,19 @@ def rerank_documents(query: str, documents: List[str], top_k: int = 5) -> List[s
             resp.raise_for_status()
             data = resp.json()
 
-            # 根据 index 从原 documents 中取出重排序后的结果
+            # 根据 index 从原 documents 中取出重排序后的结果（同时保留下标）
             results = data.get("results", [])
-            reranked = []
-            for r in results:
-                idx = r["index"]
-                reranked.append(documents[idx])
+            indices = [r["index"] for r in results[:top_k]]
+            reranked = [documents[idx] for idx in indices]
 
             logger.info(f"Rerank API 重排序完成，返回 {len(reranked)} 条")
-            return reranked[:top_k]
+            if return_indices:
+                return (reranked, indices)
+            return reranked
     except Exception as e:
         logger.error(f"Rerank API 调用失败: {e}")
-        return documents[:top_k]
+        top = documents[:top_k]
+        return (top, list(range(len(top)))) if return_indices else top
 
 
 def add_documents(case_id: int, texts: List[str], metadatas: Optional[List[dict]] = None,
@@ -170,29 +181,125 @@ def add_documents(case_id: int, texts: List[str], metadatas: Optional[List[dict]
         raise
 
 
+def _fetch_sorted_chunks(collection, filename: str):
+    """取同一文件的全部块，按 chunk_index 排序。
+
+    Chroma 的 get() 返回顺序不保证与 chunk_index 一致，
+    必须显式排序后才能按"index ± 半径"定位前后邻居。
+    """
+    data = collection.get(where={"filename": filename}, include=["documents", "metadatas"])
+    docs = data.get("documents") or []
+    metas = data.get("metadatas") or []
+    if not docs:
+        return []
+    return sorted(zip(docs, metas), key=lambda x: int(x[1]["chunk_index"]))
+
+
+def _build_windows(collection, hit_pairs, radius: int = WINDOW_RADIUS,
+                   max_total_chars: int = MAX_WINDOW_TOTAL_CHARS) -> List[str]:
+    """按命中块构建上下文窗口。
+
+    hit_pairs: [(命中块文本, 命中块metadata)]。
+    - 相邻命中归并成一个窗口，避免重复（坑 3）；
+    - 旧数据大块（chunk_len 大）半径降为 0，避免窗口过大（坑 6）；
+    - 总字数超过上限时截断（坑 4）。
+    """
+    by_file = {}
+    for doc, meta in hit_pairs:
+        fn = (meta or {}).get("filename")
+        by_file.setdefault(fn, []).append((doc, meta))
+
+    windows = []
+    for fn, pairs in by_file.items():
+        # 无 filename 元数据的老数据：命中块单独成窗，不做邻居拼接
+        if not fn:
+            windows.extend(doc for doc, _ in pairs)
+            continue
+
+        items = _fetch_sorted_chunks(collection, fn)
+        if not items:
+            windows.extend(doc for doc, _ in pairs)
+            continue
+
+        index_of = {int(m["chunk_index"]): (doc, m) for doc, m in items}
+        hit_indices = sorted(
+            int(m["chunk_index"])
+            for _, m in pairs
+            if m is not None and m.get("chunk_index") is not None
+        )
+        if not hit_indices:
+            windows.extend(doc for doc, _ in pairs)
+            continue
+
+        # 合并相邻命中：连续下标归并成一组（坑 3）
+        groups = []
+        for idx in hit_indices:
+            if groups and idx - groups[-1][-1] == 1:
+                groups[-1].append(idx)
+            else:
+                groups.append([idx])
+
+        for group in groups:
+            lo, hi = group[0], group[-1]
+            # 坑 6：块很大（旧数据 1200 字）时半径降为 0，退化成单块
+            group_len = max(
+                max(len(index_of[i][0]), int(index_of[i][1].get("chunk_len", 0)))
+                for i in group
+            )
+            r = 0 if group_len > CHILD_SIZE_THRESHOLD else radius
+            start = max(0, lo - r)
+            end = min(len(items) - 1, hi + r)
+            windows.append("\n".join(index_of[i][0] for i in range(start, end + 1)))
+
+    # 坑 4：总字数上限截断，防止上下文膨胀
+    if max_total_chars:
+        result, total = [], 0
+        for w in windows:
+            if total + len(w) > max_total_chars:
+                remain = max_total_chars - total
+                if remain > 0:
+                    result.append(w[:remain])
+                break
+            result.append(w)
+            total += len(w)
+        return result
+    return windows
+
+
 def search_documents(case_id: int, query: str, k: int = 5) -> List[str]:
-    """搜索最相关的文档片段"""
+    """检索文档（方案 C：子块检索 + 上下文窗口）。
+
+    ① 子块层粗召回 2k 候选（信号聚焦，保证召回率）；
+    ② 子块层 Cross-Encoder 重排取 top-k，并保留下标以便反查 metadata；
+    ③ 按命中块的前后邻居构建上下文窗口，返回给 LLM（上下文完整）。
+    """
     try:
         collection = get_or_create_collection(case_id)
         if collection.count() == 0:
             return []
 
-        # 生成查询向量
         query_vector = embed_query(query)
 
-        # 检索
+        # ① 子块层粗召回 2k 候选
+        recall_count = min(2 * k, collection.count())
         results = collection.query(
             query_embeddings=[query_vector],
-            n_results=min(k, collection.count()),
+            n_results=recall_count,
         )
-
-        if not results["documents"] or not results["documents"][0]:
+        if not results.get("documents") or not results["documents"][0]:
             return []
-        documents = results["documents"][0]
+        docs = results["documents"][0]
+        raw_metas = results.get("metadatas")
+        metas = raw_metas[0] if raw_metas and raw_metas[0] else [{}] * len(docs)
 
-        # 使用 API 重排序
-        return rerank_documents(query, documents, top_k=k)
+        # ② 子块层重排，取 top-k 命中及其在原列表中的下标
+        _, top_indices = rerank_documents(query, docs, top_k=k, return_indices=True)
+        if not top_indices:
+            return []
 
+        # ③ 按命中块建上下文窗口
+        hit_pairs = [(docs[i], metas[i]) for i in top_indices]
+        return _build_windows(collection, hit_pairs)
 
     except Exception as e:
         logger.error(f"搜索文档失败: {e}")

@@ -5,7 +5,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 router = APIRouter(prefix="/cases/{case_id}/documents", tags=["documents"])
 
-def chunk_text(text:str,chunk_size:int = 1200,overlap:int = 150) ->list[str]:
+# 方案 C：子块大小。小块做索引、信号聚焦；旧数据大块靠 chunk_len 自动降级（见 vector_store._build_windows）
+CHILD_SIZE = 250
+CHILD_OVERLAP = 50
+
+
+def chunk_text(text:str,chunk_size:int = CHILD_SIZE,overlap:int = CHILD_OVERLAP) ->list[str]:
     """
     使用langchain的库只能切割文本,
     优先级:段落->句子->词组 递归切分
@@ -51,10 +56,13 @@ async def upload_document(
     except UnicodeError:
         raise HTTPException(status_code=400, detail="请确认文件编码为utf-8")
 
-    # 分块
-    chunks = chunk_text(text)
+    # 分块（子块：小块做索引，检索时按命中块的前后邻居拼上下文窗口）
+    chunks = chunk_text(text, chunk_size=CHILD_SIZE, overlap=CHILD_OVERLAP)
     if not chunks:
         raise HTTPException(status_code=400, detail="文件为空或无法分割")
+
+    # 替换语义：同文件名先删旧块再写入，避免重复上传在 Chroma 里残留脏数据
+    delete_documents_by_metadata(case_id, file.filename)
 
     # 只存 Chroma，不再存 MySQL
     metadatas = [
