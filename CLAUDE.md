@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-推理助手 (Detective Assistant) — 面向推理小说/剧情游戏爱好者的辅助工具。用户可在已读内容范围内整理线索、连线推理、与 AI Agent 对话，严格避免剧透。技术栈：Vue 3 + Vite（前端），FastAPI + SQLAlchemy 2.0 异步 + Chroma（后端），DeepSeek API（对话），SiliconFlow BAAI/bge-m3（向量化），BAAI/bge-reranker-base（重排序）。
+推理助手 (Detective Assistant) — 面向推理小说/剧情游戏爱好者的辅助工具。用户可在已读内容范围内整理线索、连线推理、与 AI Agent 对话，严格避免剧透。技术栈：Vue 3 + Vite（前端），FastAPI + SQLAlchemy 2.0 异步 + Chroma（后端），DeepSeek API（对话），SiliconFlow BAAI/bge-m3（向量化），SiliconFlow BAAI/bge-reranker-v2-m3（重排序，经 API 调用）。
 
 ## 常用命令
 
@@ -36,7 +36,7 @@ npm run build      # 生产构建（含 vue-tsc 类型检查）
 
 ### 环境变量（`backend/.env`）
 
-必须配置的变量：`DATABASE_URL`（MySQL）、`DEEPSEEK_API_KEY`（对话模型）、`SILICONFLOW_API_KEY`（Embedding 模型）。可选：`RERANKER_MODEL_PATH`（本地重排序模型路径）、`CHROMA_PERSIST_DIRECTORY`、`HF_ENDPOINT`。
+必须配置的变量：`DATABASE_URL`（MySQL）、`DEEPSEEK_API_KEY`（对话模型）、`SILICONFLOW_API_KEY`（Embedding + 重排共用）。可选：`CHROMA_PERSIST_DIRECTORY`。
 
 ## 架构
 
@@ -93,9 +93,9 @@ composables/            ← 按功能拆分的组合式 API（Vue 3 逻辑复用
 
 ### RAG 检索链路
 
-1. 文档上传 → `RecursiveCharacterTextSplitter` 分块（`chunk_size=1200, chunk_overlap=150`）→ SiliconFlow `BAAI/bge-m3` 向量化 → 存入 Chroma
-2. 检索 → Chroma 向量粗召回 `k*2` 条 → 如果候选 > 5 条则走 Cross-Encoder 重排序 → 取 Top-k
-3. 候选 ≤ 5 条直接返回；重排序失败自动降级到向量检索结果
+1. 文档上传 → `RecursiveCharacterTextSplitter` 分块（`chunk_size=250, chunk_overlap=50`，子块做索引）→ SiliconFlow `BAAI/bge-m3` 向量化 → 存入 Chroma（同文件名替换语义，先删旧块再写入）
+2. 检索 → Chroma 向量粗召回 `k*2` 条候选（扩大候选空间保证召回率）→ Cross-Encoder 重排序取 Top-k → 按命中块的前后邻居（`WINDOW_RADIUS=1`）拼上下文窗口，旧数据大块自动降级为单块（`CHILD_SIZE_THRESHOLD=500`）
+3. 重排序失败自动降级到向量检索结果
 
 ### 技能系统
 
@@ -113,10 +113,10 @@ composables/            ← 按功能拆分的组合式 API（Vue 3 逻辑复用
 
 ## 注意事项
 
-- **NumPy 版本**：必须为 1.26.4，Chroma 0.5.0 不兼容 NumPy 2.x 的 `np.float_` 移除。
+- **NumPy 版本**：必须为 1.26.4。requirements.txt 锁定的 Chroma 0.5.0 不兼容 NumPy 2.x（`np.float_` 被移除）；本地 conda 环境实测为 Chroma 1.5.9，同样配 numpy 1.26.4 正常运行。
 - **模型 API**：对话使用 `deepseek-v4-flash`，通过 langchain-openai 兼容的 `ChatOpenAI` 客户端调用（base_url 指向 `https://api.deepseek.com`）。代码中变量名 `BAILIAN_BASE_URL` 是历史遗留，实际已迁移到 DeepSeek。
 - **Embedding 模型**：使用 SiliconFlow 平台的 `BAAI/bge-m3`，支持多语言。
-- **重排序模型**：首次加载需下载约 1.1GB（`sentence-transformers`），建议配置 `RERANKER_MODEL_PATH` 使用本地路径，启动时通过 lifespan 预加载。
+- **重排序模型**：经 SiliconFlow Rerank API 调用 `BAAI/bge-reranker-v2-m3`，与 Embedding 共用 `SILICONFLOW_API_KEY`，无需本地加载模型。
 - **Vue Flow**：删除便签时需同步清理前端 edges 数组中的关联连线（后端 CASCADE 删除）。
 - **时间轴排序**：必须用 `parseEventTime` 数值比较，不能直接用字符串排序。事件时间支持年-月-日-时-分。
 - **文档上传**：仅支持 UTF-8 编码的 `.txt` 文件。

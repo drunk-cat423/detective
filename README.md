@@ -11,7 +11,7 @@
 | AI 模型 | DeepSeek API（deepseek-v4-flash，对话）、SiliconFlow BAAI/bge-m3（向量化） |
 | Agent 框架 | LangChain + langchain-openai（ChatOpenAI 兼容客户端）+ 原生 MCP SDK（已禁用） |
 | 向量数据库 | Chroma（持久化存储） |
-| 重排序 | BAAI/bge-reranker-base（Cross-Encoder 精排） |
+| 重排序 | SiliconFlow BAAI/bge-reranker-v2-m3（Cross-Encoder 精排，API 调用） |
 | 开发工具 | PyCharm (后端) + VS Code (前端) + Navicat (数据库) |
 
 ## 目录结构
@@ -52,8 +52,7 @@ detective-assistant/
 │   │       ├── agent.py           # Agent 引擎（DeepSeek + RAG + 工具调用循环）
 │   │       ├── vector_store.py    # Chroma 向量库 + Embedding + 重排序
 │   │       ├── tools.py           # 本地工具定义与统一执行入口（MCP 已禁用）
-│   │       ├── skill_loader.py    # 技能系统（YAML frontmatter 插件化）
-│   │       └── reranker.py        # Cross-Encoder 重排序（可选）
+│   │       └── skill_loader.py    # 技能系统（YAML frontmatter 插件化）
 │   ├── alembic/                   # 数据库迁移
 │   ├── requirements.txt
 │   └── .env.example
@@ -105,15 +104,16 @@ detective-assistant/
 ### 4. 文档上传与向量化（RAG）
 - 前端：文档 Tab 内提供文件拖拽/选择上传组件，支持 `.txt` 文件（UTF-8 编码）
 - 后端：接收文件 → 递归字符分块（优先级：段落→句子→词组）→ 调用 `BAAI/bge-m3` 向量化 → 存入 Chroma 向量库
-- 分块策略：`chunk_size=1200`, `chunk_overlap=150`
+- 分块策略：`chunk_size=250`, `chunk_overlap=50`（子块做索引，检索时按命中块前后邻居拼上下文窗口）
+- 同文件名上传为替换语义（先删旧块再写入），避免重复上传产生脏数据
 - 文档信息（文件名、分块数）直接从 Chroma metadata 查询，不再使用 MySQL 表
 - **文档删除**：支持在文档 Tab 中删除已上传文档，同步清理 Chroma 中的向量
 
 ### 5. RAG 检索（两阶段检索 + 重排序）
 - **第一阶段（粗召回）**：Chroma 向量检索，召回 Top-k×2 候选文档
-- **第二阶段（精排）**：BAAI/bge-reranker-base Cross-Encoder 重排序，取 Top-k
+- **第二阶段（精排）**：SiliconFlow BAAI/bge-reranker-v2-m3 Cross-Encoder 重排序，取 Top-k
 - **优化策略**：
-  - 粗召回数量 ≤5 时，跳过重排序，直接返回向量检索结果
+  - 粗召回量取目标返回量的 2 倍，扩大候选空间保证召回率
   - 重排序失败时自动回退到向量检索，保证服务可用性
   - 模型支持本地路径加载，避免生产环境依赖 HuggingFace 网络
 
@@ -183,10 +183,6 @@ DEEPSEEK_API_KEY=你的DeepSeek_API_KEY
 SILICONFLOW_API_KEY=你的硅基流动API_KEY
 CHROMA_PERSIST_DIRECTORY=./chroma_data
 SECRET_KEY=任意随机字符串
-
-# 重排序模型路径（可选，默认从 HuggingFace 下载）
-RERANKER_MODEL_PATH=./models/bge-reranker-base
-HF_ENDPOINT=https://hf-mirror.com
 ```
 
 4. 启动：
@@ -280,8 +276,7 @@ npm run dev
 9. **流式对话会话安全**：`agent_chat_stream` 内部用独立 `async_session()` 保存助手消息
 10. **文档上传**：仅支持 UTF-8 编码的 `.txt` 文件，单次上传大小受 FastAPI 默认限制（16MB）
 11. **MCP 调用**：MCP 远程工具目前已被禁用（注释掉），因其输出不稳定，与提问内容无关
-12. **重排序模型**：首次加载需下载 ~1.1GB 模型，建议配置 `RERANKER_MODEL_PATH` 使用本地路径
-13. **模型缓存**：`sentence-transformers` 默认缓存到系统目录，生产环境建议通过环境变量或 Docker 镜像预装
+12. **重排序模型**：经 SiliconFlow Rerank API 调用 `BAAI/bge-reranker-v2-m3`，需配置 `SILICONFLOW_API_KEY`；调用失败时自动降级为向量检索结果
 
 ## 后续规划
 
