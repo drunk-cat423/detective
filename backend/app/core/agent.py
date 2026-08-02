@@ -274,14 +274,12 @@ async def chat_with_tools(
             #用户与ai的对话
             messages.append(ToolMessage(content = tool_result,tool_call_id = tool_call_id))
 
-    #确保最后一条是AIMessage
+    # 收口：末尾不是"纯文本 AIMessage"（工具链未收口）→ 用不带工具的 LLM 再调一次，强制输出文本结论
     final_message = messages[-1]
-    if not isinstance(final_message,AIMessage):
-        #再次调用模型生成最终回复,但不再关注调用工具的需求
-        final_response = await llm_with_tools.ainvoke(messages)
+    if not isinstance(final_message, AIMessage) or getattr(final_message, "tool_calls", None):
+        final_response = await llm.ainvoke(messages)
         final_message = final_response
-        messages.append(final_response)
-    return final_message.content
+    return final_message.content or ""
 
 
 #流式对话
@@ -382,19 +380,15 @@ async def stream_with_tools(
 
     logger.info(f"[流式] 收口: 最后一条={type(messages[-1]).__name__} -> {'假流式' if isinstance(messages[-1], AIMessage) else '真流式'}")
 
-    # 如果最后一条是AIMessage
-    if isinstance(messages[-1], AIMessage):
-        # 循环里已经拿到了最终回复，直接输出，不再调用模型
-
-        content = messages[-1].content
-        # 此时已经拿到了回复,那就模拟流式输出返回结果
+    # 收口：只有"纯文本 AIMessage"（无 tool_calls 且 content 非空）才是真正的最终回复，走假流式；
+    # 末尾是 ToolMessage 或带 tool_calls 的 AIMessage（工具链未收口）→ 用不带工具的 LLM 强制总结
+    last = messages[-1]
+    if isinstance(last, AIMessage) and not getattr(last, "tool_calls", None):
+        content = last.content or ""
         for char in content:
             yield char
             await asyncio.sleep(0.01)
-
-    # 最后一条是 ToolMessage，需要模型收口，用真流式生成
     else:
-        # 用不带工具的 LLM 收口：避免工具链耗尽后模型继续尝试调工具只输出过场话，强制给出完整文本结论
         async for chunk in llm.astream(messages):
             if chunk.content:
                 yield chunk.content
