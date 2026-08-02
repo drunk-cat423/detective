@@ -338,9 +338,26 @@ async def stream_with_tools(
 
     messages.append(HumanMessage(content = user_message))
 
+    # 进入工具循环前的干净 messages 快照（LLM 调用异常时降级为纯文本回复，保证不"无回复"）
+    base_messages = list(messages)
+
     max_iteration = 3
     for i in range(max_iteration):
-        response = await llm_with_tool.ainvoke(messages)
+        try:
+            response = await llm_with_tool.ainvoke(messages)
+        except Exception as e:
+            logger.error(f"[流式] LLM 工具调用失败，降级为纯文本回复: {e}", exc_info=True)
+            # 记录消息尾部，便于排查 tool_calls 配对问题
+            for m in messages[-5:]:
+                logger.error(
+                    f"[流式] 尾部消息: {type(m).__name__} "
+                    f"tool_call_id={getattr(m, 'tool_call_id', None)} "
+                    f"content={str(getattr(m, 'content', ''))[:50]!r}"
+                )
+            async for chunk in llm_with_tool.astream(base_messages):
+                if chunk.content:
+                    yield chunk.content
+            return
         messages.append(response)
 
         tool_calls = getattr(response,"tool_calls",{})
