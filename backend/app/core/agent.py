@@ -361,6 +361,7 @@ async def stream_with_tools(
         messages.append(response)
 
         tool_calls = getattr(response,"tool_calls",{})
+        logger.info(f"[流式] 循环{i}: tool_calls={len(tool_calls)} content={str(getattr(response,'content',''))[:100]!r}")
         if not tool_calls:
             break
 
@@ -376,7 +377,10 @@ async def stream_with_tools(
                 case_id,
                 all_tools = all_tools
             )
+            logger.info(f"[流式] 工具 {tool_name} -> {str(tool_result)[:100]!r}")
             messages.append(ToolMessage(content = tool_result,tool_call_id = tool_call_id))
+
+    logger.info(f"[流式] 收口: 最后一条={type(messages[-1]).__name__} -> {'假流式' if isinstance(messages[-1], AIMessage) else '真流式'}")
 
     # 如果最后一条是AIMessage
     if isinstance(messages[-1], AIMessage):
@@ -390,7 +394,8 @@ async def stream_with_tools(
 
     # 最后一条是 ToolMessage，需要模型收口，用真流式生成
     else:
-        async for chunk in llm_with_tool.astream(messages):
+        # 用不带工具的 LLM 收口：避免工具链耗尽后模型继续尝试调工具只输出过场话，强制给出完整文本结论
+        async for chunk in llm.astream(messages):
             if chunk.content:
                 yield chunk.content
 
