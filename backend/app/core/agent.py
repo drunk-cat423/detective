@@ -83,11 +83,11 @@ async def summarize_and_prune(case_id: int):
                 .where(AgentMessage.case_id == case_id)
             )
             total = result.scalar()
-            SUMMARY_THRESHOLD = 30
+            SUMMARY_THRESHOLD = 60
             RETAIN_COUNT = 10
 
             if total <= SUMMARY_THRESHOLD:
-                logger.info(f"[摘要] case {case_id} 共 {total} 轮，未达阈值 {SUMMARY_THRESHOLD}，跳过")
+                logger.info(f"[摘要] case {case_id} 共 {total} 条，未达阈值 {SUMMARY_THRESHOLD}，跳过")
                 return
 
             # 2. 取出需要摘要的旧消息
@@ -206,17 +206,14 @@ async def chat_with_tools(
     #构建系统提示词
     system_prompt = build_system_prompt()
 
-    # 注入画像和相关记忆（带 [xxx] 标签）
+    # 注入画像（低频更新，放 system；相关记忆改为独立消息放 history 后，避免污染 system+tools 缓存前缀）
     try:
         user_profile = get_memory("user_profile_global") or "（尚未建立）"
         ai_profile = get_memory("ai_profile_global") or "（尚未建立）"
-        memories = search_memories(user_message, case_id, k=3)
         extra = f"\n\n[AI画像]\n{ai_profile}\n\n[用户画像]\n{user_profile}\n\n"
-        if memories:
-            extra += "[相关记忆]\n" + "\n".join(f"- {m}" for m in memories) + "\n"
         system_prompt += extra
     except Exception as e:
-        logger.warning(f"加载画像/记忆失败（不影响对话）: {e}")
+        logger.warning(f"加载画像失败（不影响对话）: {e}")
 
     #这里注意history是从数据库拿出来的,类型是字典,所以需要用HumanMessage之类的包装一下
     messages = [SystemMessage(content = system_prompt)]
@@ -225,6 +222,17 @@ async def chat_with_tools(
             messages.append(HumanMessage(content = msg["content"]))
         elif msg["role"] == "assistant":
             messages.append(AIMessage(content = msg["content"]))
+
+    # 相关记忆：随当前消息检索、每次可能变化，作为独立注入消息放 history 之后、当前消息之前，
+    # 不污染 system+tools 稳定前缀（缓存友好）；靠 [相关记忆] 标签让模型识别为注入上下文
+    try:
+        memories = search_memories(user_message, case_id, k=3)
+        if memories:
+            mem_text = "[相关记忆]\n" + "\n".join(f"- {m}" for m in memories)
+            messages.append(HumanMessage(content = mem_text))
+    except Exception as e:
+        logger.warning(f"加载相关记忆失败（不影响对话）: {e}")
+
     messages.append(HumanMessage(content = user_message))
 
     #设定最多循环次数,防止模型一直在调用模型
@@ -302,17 +310,14 @@ async def stream_with_tools(
     llm_with_tool = llm.bind_tools(openai_tools)
     system_prompt = build_system_prompt()
 
-    # 注入画像和相关记忆（带 [xxx] 标签）
+    # 注入画像（低频更新，放 system；相关记忆改为独立消息放 history 后，避免污染 system+tools 缓存前缀）
     try:
         user_profile = get_memory("user_profile_global") or "（尚未建立）"
         ai_profile = get_memory("ai_profile_global") or "（尚未建立）"
-        memories = search_memories(user_message, case_id, k=3)
         extra = f"\n\n[AI画像]\n{ai_profile}\n\n[用户画像]\n{user_profile}\n\n"
-        if memories:
-            extra += "[相关记忆]\n" + "\n".join(f"- {m}" for m in memories) + "\n"
         system_prompt += extra
     except Exception as e:
-        logger.warning(f"加载画像/记忆失败（不影响对话）: {e}")
+        logger.warning(f"加载画像失败（不影响对话）: {e}")
 
     messages = [SystemMessage(content = system_prompt)]
     for msg in history:
@@ -320,6 +325,17 @@ async def stream_with_tools(
             messages.append(HumanMessage(content = msg["content"]))
         else:
             messages.append(AIMessage(content = msg["content"]))
+
+    # 相关记忆：随当前消息检索、每次可能变化，作为独立注入消息放 history 之后、当前消息之前，
+    # 不污染 system+tools 稳定前缀（缓存友好）；靠 [相关记忆] 标签让模型识别为注入上下文
+    try:
+        memories = search_memories(user_message, case_id, k=3)
+        if memories:
+            mem_text = "[相关记忆]\n" + "\n".join(f"- {m}" for m in memories)
+            messages.append(HumanMessage(content = mem_text))
+    except Exception as e:
+        logger.warning(f"加载相关记忆失败（不影响对话）: {e}")
+
     messages.append(HumanMessage(content = user_message))
 
     max_iteration = 3
