@@ -4,6 +4,28 @@ import {
   getConnections, createConnection, updateConnection, deleteConnection,
 } from '@/api/index'
 
+type CardStyle = 'torn' | 'memo' | 'index' | 'ticket' | 'clipping' | 'dossier'
+
+const clueCardStyles: CardStyle[] = ['torn', 'memo', 'index', 'ticket', 'clipping']
+
+function resolveCardStyle(id: string | number, type: string): CardStyle {
+  if (type === 'suspect') return 'dossier'
+  const seed = Array.from(String(id)).reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  return clueCardStyles[seed % clueCardStyles.length]
+}
+
+function cardDimensions(style: CardStyle) {
+  const sizes: Record<CardStyle, { width: number; height: number }> = {
+    torn: { width: 190, height: 124 },
+    memo: { width: 178, height: 148 },
+    index: { width: 206, height: 126 },
+    ticket: { width: 214, height: 108 },
+    clipping: { width: 184, height: 154 },
+    dossier: { width: 202, height: 146 },
+  }
+  return sizes[style]
+}
+
 export function useNotes(caseId: number) {
   const nodes = ref<any[]>([])
   const edges = ref<any[]>([])
@@ -11,9 +33,20 @@ export function useNotes(caseId: number) {
   const vueFlowRef = ref<any>(null)
 
   const presetColors = [
-    '#FFF9C4', '#FFCCBC', '#C8E6C9', '#BBDEFB',
-    '#E1BEE7', '#FFE0B2', '#B2EBF2', '#F5F5F5',
+    '#F4EDDC', '#F7F3E8', '#F6F4EC', '#ECD3CD',
+    '#CFC6E0', '#DDE3CC', '#D8BE8B', '#EFE9DC',
   ]
+
+  const legacyPaperColors: Record<string, string> = {
+    '#FFF9C4': '#F4EDDC',
+    '#FFCCBC': '#ECD3CD',
+    '#C8E6C9': '#DDE3CC',
+    '#BBDEFB': '#E7ECE8',
+    '#E1BEE7': '#CFC6E0',
+    '#FFE0B2': '#D8BE8B',
+    '#B2EBF2': '#E4ECE6',
+    '#F5F5F5': '#F7F3E8',
+  }
 
   const centerPoint = { x: 400, y: 300 }
 
@@ -21,18 +54,23 @@ export function useNotes(caseId: number) {
     try {
       const res = await getNotes(caseId)
       const serverNotes = res.data
-      nodes.value = serverNotes.map((n: any) => ({
-        id: String(n.id),
-        type: 'note',
-        position: { x: n.pos_x, y: n.pos_y },
-        data: {
-          content: n.content,
-          type: n.type,
-          color: n.color,
-          name: n.name || '',
-        },
-        style: { width: `${n.width}px`, height: `${n.height}px` },
-      }))
+      nodes.value = serverNotes.map((n: any) => {
+        const cardStyle = resolveCardStyle(n.id, n.type)
+        const { width, height } = cardDimensions(cardStyle)
+        return {
+          id: String(n.id),
+          type: 'note',
+          position: { x: n.pos_x, y: n.pos_y },
+          data: {
+            content: n.content,
+            type: n.type,
+            color: legacyPaperColors[String(n.color).toUpperCase()] || n.color,
+            name: n.name || '',
+            cardStyle,
+          },
+          style: { width: `${width}px`, height: `${height}px` },
+        }
+      })
     } catch (err) {
       console.error('加载便签失败', err)
     }
@@ -41,21 +79,25 @@ export function useNotes(caseId: number) {
   async function loadConnections() {
     try {
       const res = await getConnections(caseId)
-      edges.value = res.data.map((c: any) => ({
-        id: String(c.id),
-        source: String(c.from_note_id),
-        target: String(c.to_note_id),
-        label: c.label,
-      }))
+      edges.value = res.data.map((c: any) => {
+        return {
+          id: String(c.id),
+          source: String(c.from_note_id),
+          target: String(c.to_note_id),
+          sourceHandle: 'thread-source-pin',
+          targetHandle: 'thread-target-pin',
+          label: c.label,
+        }
+      })
     } catch (err) {
       console.error('加载连线失败', err)
     }
   }
 
-  async function addNote(type: string) {
+  async function addNote(type: string, position?: { x: number; y: number }) {
     const defaultColors: Record<string, string> = {
-      clue: '#FFF9C4',
-      suspect: '#FFCCBC',
+      clue: '#F4EDDC',
+      suspect: '#ECD3CD',
     }
     const defaultName = type === 'suspect' ? '未知' : ''
     try {
@@ -64,11 +106,13 @@ export function useNotes(caseId: number) {
         content: type === 'clue' ? '新线索' : '新嫌疑人',
         name: defaultName,
         color: defaultColors[type],
-        pos_x: Math.random() * 400,
-        pos_y: Math.random() * 300,
-        width: 200,
-        height: 120,
+        pos_x: position?.x ?? Math.random() * 400,
+        pos_y: position?.y ?? Math.random() * 300,
+        width: type === 'suspect' ? 202 : 190,
+        height: type === 'suspect' ? 142 : 124,
       })
+      const cardStyle = resolveCardStyle(res.data.id, res.data.type)
+      const { width, height } = cardDimensions(cardStyle)
       nodes.value.push({
         id: String(res.data.id),
         type: 'note',
@@ -78,11 +122,14 @@ export function useNotes(caseId: number) {
           type: res.data.type,
           name: res.data.name || '',
           color: res.data.color,
+          cardStyle,
         },
-        style: { width: `${res.data.width}px`, height: `${res.data.height}px` },
+        style: { width: `${width}px`, height: `${height}px` },
       })
+      return res.data
     } catch (err) {
       console.error('创建便签失败', err)
+      return null
     }
   }
 
@@ -155,22 +202,25 @@ export function useNotes(caseId: number) {
       if (idx !== -1) {
         nodes.value[idx].data = { ...n.data }
       }
-      alert('保存成功')
+      return true
     } catch (err) {
       console.error('保存便签失败', err)
+      return false
     }
   }
 
-  async function deleteSelectedNode() {
-    if (!selectedNode.value) return
-    if (!confirm('确认删除这个便签？关联的连线也会一并删除。')) return
+  async function deleteSelectedNode(requireConfirmation = true) {
+    if (!selectedNode.value) return false
+    if (requireConfirmation && !confirm('确认删除这个便签？关联的连线也会一并删除。')) return false
     try {
       await deleteNote(caseId, Number(selectedNode.value.id))
       edges.value = edges.value.filter((e: any) => e.source !== selectedNode.value.id && e.target !== selectedNode.value.id)
       nodes.value = nodes.value.filter((n: any) => n.id !== selectedNode.value.id)
       selectedNode.value = null
+      return true
     } catch (err) {
       console.error('删除便签失败', err)
+      return false
     }
   }
 

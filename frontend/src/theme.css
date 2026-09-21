@@ -1,0 +1,73 @@
+:root {
+  --paper: #f4efe4;
+  --paper-deep: #e8dfcf;
+  --plaster: #d8d0c2;
+  --plaster-dark: #c8bdac;
+  --ink: #29241e;
+  --ink-soft: #6f665b;
+  --ink-faint: #9b9082;
+  --rust: #b65f3e;
+  --rust-dark: #87422d;
+  --rust-pale: #ead2c6;
+  --evidence-red: #9f3e35;
+  --archive-green: #66725c;
+  --line: rgba(78, 64, 48, 0.18);
+  --white: #fffdf8;
+  --cream: #f4efe4;
+  --text: #29241e;
+  --text-secondary: #6f665b;
+  --border: rgba(78, 64, 48, 0.18);
+  --gold: #b65f3e;
+  --gold-light: #ead2c6;
+  --gold-pale: #f3e4dc;
+  --gold-deep: #87422d;
+  --traveler-blue: #66725c;
+  --shadow: 0 8px 24px rgba(57, 44, 28, 0.12);
+  --shadow-hover: 0 18px 44px rgba(57, 44, 28, 0.2);
+  --sans: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --serif: "STSong", "SimSun", Georgia, serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-width: 320px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 3px;
+}
+
+::selection {
+  color: var(--white);
+  background: var(--rust);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
