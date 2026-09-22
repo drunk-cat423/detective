@@ -81,10 +81,31 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="12" cy="12" r="2.5"/></svg>
     </button>
 
-    <div class="add-note-bar" @pointerdown.stop>
-      <span>固定新档案</span>
-      <button class="clue-btn" @click.stop="startPlacement('clue')"><b>＋</b> 线索</button>
-      <button class="suspect-btn" @click.stop="startPlacement('suspect')"><b>＋</b> 嫌疑人</button>
+    <div class="add-note-dock" :class="{ open: addMenuOpen }" @pointerdown.stop>
+      <div id="new-material-menu" class="material-cards" :aria-hidden="!addMenuOpen">
+        <button class="material-card clue-card" :tabindex="addMenuOpen ? 0 : -1" @click.stop="startPlacement('clue')">
+          <span class="material-code">E-01</span>
+          <strong>线索</strong>
+          <small>证物便签</small>
+        </button>
+        <button class="material-card suspect-card" :tabindex="addMenuOpen ? 0 : -1" @click.stop="startPlacement('suspect')">
+          <span class="material-code">P-02</span>
+          <strong>嫌疑人</strong>
+          <small>人物档案</small>
+        </button>
+      </div>
+      <button
+        class="add-note-trigger"
+        type="button"
+        aria-controls="new-material-menu"
+        :aria-expanded="addMenuOpen"
+        @click.stop="toggleMaterialMenu"
+      >
+        <span class="card-stack" aria-hidden="true"></span>
+        <span class="brass-fastener" aria-hidden="true"></span>
+        <span class="trigger-copy"><small>NEW FILE</small><strong>登记材料</strong></span>
+        <span class="trigger-plus" aria-hidden="true">＋</span>
+      </button>
     </div>
   </div>
 </template>
@@ -126,6 +147,7 @@ const emit = defineEmits<{
 const viewportRef = ref<HTMLElement | null>(null)
 const searchInput = ref<HTMLInputElement | null>(null)
 const searchQuery = ref('')
+const addMenuOpen = ref(false)
 const placingType = ref<'clue' | 'suspect' | null>(null)
 const menuNodeId = ref<string | null>(null)
 const linkingSourceId = ref<string | null>(null)
@@ -222,7 +244,8 @@ function screenToWorld(clientX: number, clientY: number) {
 function beginPan(event: PointerEvent) {
   if (event.button !== 0 || placingType.value) return
   const target = event.target as HTMLElement
-  if (target.closest('.canvas-heading,.add-note-bar,.center-btn,.placement-hint,.edge-edit-toolbar,.thread-hitbox')) return
+  if (target.closest('.canvas-heading,.add-note-dock,.center-btn,.placement-hint,.edge-edit-toolbar,.thread-hitbox')) return
+  addMenuOpen.value = false
   panState.value = {
     startX: event.clientX,
     startY: event.clientY,
@@ -235,6 +258,7 @@ function beginPan(event: PointerEvent) {
 function beginCardDrag(node: any, event: PointerEvent) {
   if (event.button !== 0 || linkingSourceId.value || placingType.value) return
   event.preventDefault()
+  addMenuOpen.value = false
   dragState.value = {
     id: String(node.id),
     startX: event.clientX,
@@ -334,7 +358,7 @@ function handlePaneClick(event: MouseEvent) {
     return
   }
   const target = event.target as HTMLElement
-  if (target.closest('.board-card,.thread-hitbox,.canvas-heading,.add-note-bar,.center-btn,.placement-hint,.edge-edit-toolbar')) return
+  if (target.closest('.board-card,.thread-hitbox,.canvas-heading,.add-note-dock,.center-btn,.placement-hint,.edge-edit-toolbar')) return
   if (!placingType.value) {
     emit('deselect-node')
     menuNodeId.value = null
@@ -361,8 +385,15 @@ function onEdgeDoubleClick(edge: any, event: MouseEvent) {
 function goToCenter() { fitView() }
 function saveEdgeLabelEdit() { emit('save-edge-label-edit') }
 function deleteCurrentEdge() { emit('delete-current-edge') }
-function startPlacement(type: 'clue' | 'suspect') { placingType.value = type }
+function toggleMaterialMenu() {
+  addMenuOpen.value = !addMenuOpen.value
+}
+function startPlacement(type: 'clue' | 'suspect') {
+  addMenuOpen.value = false
+  placingType.value = type
+}
 function cancelActiveMode() {
+  addMenuOpen.value = false
   placingType.value = null
   linkingSourceId.value = null
   menuNodeId.value = null
@@ -404,7 +435,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   overflow: hidden;
   touch-action: none;
-  cursor: grab;
+  cursor: url('/cursors/magnifier.svg') 11 11, zoom-in;
   border: 8px solid #846d53;
   border-left-width: 7px;
   border-radius: 3px 15px 15px 3px;
@@ -456,13 +487,36 @@ onBeforeUnmount(() => {
 .placement-enter-active,.placement-leave-active { transition:opacity .18s ease-out,transform .2s cubic-bezier(.23,1,.32,1); }
 .placement-enter-from,.placement-leave-to { opacity:0; transform:translate(-50%,10px); }
 
-.add-note-bar { position:absolute; bottom:24px; left:28px; z-index:10; display:flex; gap:8px; align-items:center; padding:7px; border:1px solid rgba(79,61,42,.15); border-radius:999px; background:rgba(247,243,234,.94); box-shadow:0 10px 28px rgba(57,44,28,.14); }
-.add-note-bar>span { padding:0 8px; color:var(--ink-faint); font:9px var(--mono); letter-spacing:.12em; }
-.add-note-bar button { padding:9px 14px; border:0; border-radius:999px; color:var(--ink); font-weight:600; cursor:pointer; font-size:13px; background:#f0dfbd; transition:transform .16s ease-out,box-shadow .2s ease; }
-.add-note-bar .suspect-btn { background:#dfc3bd; }
-.add-note-bar button b { font-size:17px; font-weight:400; vertical-align:-1px; }
-.add-note-bar button:hover { transform:translateY(-2px); box-shadow:0 7px 16px rgba(60,45,29,.14); }
-.add-note-bar button:active { transform:scale(.97); }
+.add-note-dock { position:absolute; bottom:24px; left:28px; z-index:22; width:108px; height:50px; }
+.add-note-trigger { position:absolute; z-index:3; inset:0; display:flex; align-items:center; gap:8px; box-sizing:border-box; padding:7px 9px 7px 18px; border:1px solid rgba(68,49,29,.34); border-radius:3px 5px 4px 3px; color:#49392a; background:repeating-linear-gradient(2deg,rgba(85,59,33,.026) 0 1px,transparent 1px 4px),linear-gradient(110deg,rgba(255,255,255,.38),transparent 55%),#dfcfad; box-shadow:4px 6px 13px rgba(52,36,20,.19),inset 0 1px rgba(255,255,255,.45); cursor:pointer; transform:rotate(-1.2deg); transform-origin:16px 42px; transition:transform 150ms cubic-bezier(.23,1,.32,1),box-shadow 150ms ease; }
+.add-note-trigger::before { content:''; position:absolute; z-index:1; top:-1px; right:7px; left:7px; height:4px; border-top:1px solid rgba(68,49,29,.36); border-radius:50%; box-shadow:inset 0 2px 2px rgba(255,249,232,.42),0 -2px 3px rgba(54,37,20,.08); pointer-events:none; }
+.card-stack { position:absolute; z-index:-1; inset:3px -3px -3px 3px; border:1px solid rgba(68,49,29,.2); border-radius:3px; background:#c7b58f; transform:rotate(3deg); }
+.brass-fastener { position:absolute; top:8px; left:8px; width:7px; height:7px; border-radius:50%; background:radial-gradient(circle at 35% 30%,#f4d995 0 12%,#a9803d 48%,#5e431d 100%); box-shadow:0 1px 2px rgba(54,34,13,.35); }
+.trigger-copy { min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:1px; }
+.trigger-copy small { color:rgba(73,55,35,.5); font:6px var(--mono); letter-spacing:.15em; }
+.trigger-copy strong { white-space:nowrap; font:600 12px/1.35 var(--serif); letter-spacing:.05em; }
+.trigger-plus { margin-left:auto; color:#91483f; font:17px/1 var(--serif); transition:transform 180ms cubic-bezier(.23,1,.32,1); }
+.add-note-dock.open .trigger-plus { transform:rotate(45deg); }
+.add-note-trigger:focus-visible,.material-card:focus-visible { outline:2px solid rgba(145,72,63,.72); outline-offset:3px; }
+.add-note-trigger:active { transform:rotate(-.7deg) scale(.97); }
+.material-cards { position:absolute; z-index:2; inset:0; pointer-events:none; }
+.material-card { position:absolute; bottom:5px; left:4px; width:100px; height:47px; box-sizing:border-box; padding:7px 8px 5px 12px; border:1px solid rgba(66,47,28,.28); border-radius:2px 4px 3px 2px; color:#49382a; background:repeating-linear-gradient(180deg,transparent 0 13px,rgba(87,108,111,.1) 13px 14px),linear-gradient(104deg,rgba(255,255,255,.3),transparent 56%),#ebdfc6; box-shadow:3px 5px 10px rgba(51,34,18,.14); text-align:left; cursor:pointer; opacity:1; pointer-events:none; transform:translate3d(5px,5px,0) rotate(-1deg) scale(.98); transform-origin:52px 45px; transition:transform 150ms cubic-bezier(.23,1,.32,1),box-shadow 130ms ease; }
+.material-card::before { content:''; position:absolute; top:0; right:0; bottom:0; width:4px; background:rgba(143,65,56,.6); }
+.material-code { position:absolute; top:6px; right:8px; color:rgba(75,57,37,.42); font:6px var(--mono); letter-spacing:.08em; }
+.material-card strong,.material-card small { display:block; }
+.material-card strong { font:600 13px/1.25 var(--serif); letter-spacing:.06em; }
+.material-card small { margin-top:2px; color:rgba(72,55,37,.56); font:7px var(--mono); letter-spacing:.08em; }
+.suspect-card { background:repeating-linear-gradient(180deg,transparent 0 13px,rgba(113,81,77,.09) 13px 14px),linear-gradient(104deg,rgba(255,255,255,.26),transparent 56%),#dcc3b7; }
+.suspect-card::before { background:rgba(91,64,49,.48); }
+.add-note-dock.open .material-card { pointer-events:auto; transition-duration:210ms,150ms; }
+.add-note-dock.open .clue-card { transform:translate3d(-12px,-52px,0) rotate(-4deg) scale(1); }
+.add-note-dock.open .suspect-card { transform:translate3d(75px,-50px,0) rotate(3deg) scale(1); transition-delay:32ms,0ms; }
+@media (hover:hover) and (pointer:fine) {
+  .add-note-trigger:hover { transform:rotate(-.5deg) translateY(-2px); box-shadow:5px 8px 16px rgba(52,36,20,.22),inset 0 1px rgba(255,255,255,.48); }
+  .material-card:hover { z-index:4; box-shadow:5px 8px 15px rgba(51,34,18,.2); }
+  .add-note-dock.open .clue-card:hover { transform:translate3d(-12px,-55px,0) rotate(-2.5deg) scale(1.03); }
+  .add-note-dock.open .suspect-card:hover { transform:translate3d(75px,-53px,0) rotate(1.5deg) scale(1.03); }
+}
 
 .center-btn { position:absolute; bottom:24px; right:24px; z-index:10; width:44px; height:44px; border-radius:50%; border:1px solid rgba(79,61,42,.18); background:rgba(247,243,234,.94); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:var(--shadow); transition:transform .16s ease-out,background .2s ease; line-height:0; padding:0; }
 .center-btn:hover { background:var(--white); transform:scale(1.06); }
@@ -479,12 +533,13 @@ onBeforeUnmount(() => {
   .canvas-heading { left:16px; right:16px; }
   .canvas-heading>div { display:none; }
   .search-box { margin-left:auto; width:min(260px,76vw); }
-  .search-box kbd,.add-note-bar>span { display:none; }
-  .add-note-bar { left:14px; bottom:14px; }
+  .search-box kbd { display:none; }
+  .add-note-dock { left:14px; bottom:14px; }
   .center-btn { right:14px; bottom:14px; }
 }
 
 @media (prefers-reduced-motion:reduce) {
   .board-world,.board-card { will-change:auto; }
+  .add-note-trigger,.material-card,.trigger-plus { transition-duration:.01ms; }
 }
 </style>

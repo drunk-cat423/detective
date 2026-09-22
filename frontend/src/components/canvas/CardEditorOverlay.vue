@@ -141,6 +141,7 @@ onBeforeUnmount(() => {
   color: #30291f;
   transform: rotate(-.45deg);
   transform-origin: center;
+  cursor: url('/cursors/pencil.svg') 3 25, text;
 }
 
 .editor-paper-shadow,
@@ -183,7 +184,7 @@ onBeforeUnmount(() => {
 
 .editor-field { display:flex; flex-direction:column; gap:7px; margin-top:18px; }
 .editor-field>span,.paper-choices>span { color: rgba(68,54,39,.66); font: 9px var(--mono); letter-spacing: .15em; }
-.editor-field input,.editor-field textarea { box-sizing:border-box; width:100%; border:0; outline:0; color:#342c22; background:rgba(255,252,242,.24); font-family:"KaiTi","STKaiti","FangSong",var(--serif); box-shadow:inset 0 -1px rgba(77,62,42,.18); transition:background-color 140ms ease,box-shadow 140ms ease; }
+.editor-field input,.editor-field textarea { box-sizing:border-box; width:100%; border:0; outline:0; color:#342c22; background:rgba(255,252,242,.24); font-family:"KaiTi","STKaiti","FangSong",var(--serif); cursor:url('/cursors/pencil.svg') 3 25,text; box-shadow:inset 0 -1px rgba(77,62,42,.18); transition:background-color 140ms ease,box-shadow 140ms ease; }
 .editor-field input:focus,.editor-field textarea:focus { background:rgba(255,253,246,.48); box-shadow:inset 0 -2px rgba(147,68,59,.45); }
 .editor-name input { height:43px; padding:6px 9px; font-size:23px; }
 .editor-content { flex:1; min-height:0; }

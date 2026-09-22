@@ -1,5 +1,5 @@
 <template>
-  <aside class="side-panel" :class="{ collapsed: !open }">
+  <aside ref="panelRootRef" class="side-panel" :class="{ collapsed: !open }">
     <button class="file-peek" aria-label="打开案件档案" @click="emit('update:open', true)">
       <span class="peek-tab">CASE FILE</span>
       <span class="peek-copy"><strong>案件档案</strong><small>点击调阅</small></span>
@@ -80,6 +80,7 @@ const tabs = [
 ]
 
 const contentTransition = 'file-stack'
+const panelRootRef = ref<HTMLElement | null>(null)
 const tabRefs = new Map<string, HTMLButtonElement>()
 const activeMeta = computed(() => tabs.find(tab => tab.key === props.activeTab) ?? tabs[0])
 const documentSheetRef = ref<HTMLElement | null>(null)
@@ -140,15 +141,25 @@ function scrollFurther() {
   activeScroller.scrollBy({ top: Math.max(180, activeScroller.clientHeight * .68), behavior: reducedMotion ? 'auto' : 'smooth' })
 }
 
+function closeWhenClickingOutside(event: PointerEvent) {
+  if (!props.open) return
+  const target = event.target
+  if (target instanceof Node && !panelRootRef.value?.contains(target)) {
+    emit('update:open', false)
+  }
+}
+
 watch(() => props.activeTab, () => scheduleScrollerBinding(360))
 watch(() => props.open, open => { if (open) scheduleScrollerBinding(300) })
 
 onMounted(() => {
+  document.addEventListener('pointerdown', closeWhenClickingOutside, true)
   scheduleScrollerBinding()
   window.setTimeout(updateScrollCue, 700)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeWhenClickingOutside, true)
   window.clearTimeout(cueTimer)
   unbindScroller()
 })
