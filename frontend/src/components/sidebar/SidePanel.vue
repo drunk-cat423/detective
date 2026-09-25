@@ -144,6 +144,7 @@ function scrollFurther() {
 function closeWhenClickingOutside(event: PointerEvent) {
   if (!props.open) return
   const target = event.target
+  if (target instanceof Element && target.closest('.case-search')) return
   if (target instanceof Node && !panelRootRef.value?.contains(target)) {
     emit('update:open', false)
   }

@@ -3,6 +3,7 @@
     <!-- 顶部时间线 -->
     <TimelineBar
       v-model:open="timelineOpen"
+      v-model:search-query="searchQuery"
       :show-add="showAddEvent"
       @toggle-add="showAddEvent = !showAddEvent"
     />
@@ -44,6 +45,8 @@
         v-model:edit-edge-label-text="editEdgeLabelText"
         :edit-edge-position="editEdgePosition"
         :default-edge-options="defaultEdgeOptions"
+        :search-query="searchQuery"
+        :panel-open="panelOpen"
         @select-node="handleSelectNode"
         @open-node-editor="handleOpenNodeEditor"
         @deselect-node="deselectNode"
@@ -152,6 +155,7 @@ const caseId = Number(props.id)
 
 // 侧边栏状态
 const panelOpen = ref(false)
+const searchQuery = ref('')
 const activeTab = ref<'chat' | 'docs' | 'info'>('chat')
 const toastMessage = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | undefined

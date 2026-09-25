@@ -2,25 +2,19 @@
   <div
     ref="viewportRef"
     class="canvas-area"
-    :class="{ placing: placingType, panning: panState }"
+    :class="{ placing: placingType, panning: panState, 'panel-open': panelOpen }"
     :style="canvasStyle"
     @pointerdown="beginPan"
     @click="handlePaneClick"
     @wheel.prevent="handleWheel"
   >
     <div class="canvas-heading" @pointerdown.stop>
-      <div>
-        <span class="eyebrow">CASE EVIDENCE / 调查墙</span>
-        <strong>{{ nodes.length }} 份档案 · {{ edges.length }} 条关联</strong>
-      </div>
-      <label class="search-box">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-        <input ref="searchInput" v-model="searchQuery" placeholder="搜索线索或嫌疑人" aria-label="搜索线索或嫌疑人" />
-        <kbd>Ctrl K</kbd>
-      </label>
+      <button class="center-btn" :tabindex="panelOpen ? -1 : 0" :aria-hidden="panelOpen" @click.stop="goToCenter" title="回到调查墙中心" aria-label="回到调查墙中心">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="12" cy="12" r="2.5"/></svg>
+      </button>
     </div>
 
-    <div class="board-world" :style="worldStyle">
+    <div ref="worldRef" class="board-world" :class="{ centering: isCentering }" :style="worldStyle">
       <svg class="edge-layer" overflow="visible" aria-label="线索关联">
         <ThreadEdge
           v-for="item in edgeModels"
@@ -77,10 +71,6 @@
       <button class="edge-delete-btn" @mousedown.stop.prevent="deleteCurrentEdge" title="删除连线">🗑️</button>
     </div>
 
-    <button class="center-btn" @pointerdown.stop @click.stop="goToCenter" title="回到调查墙中心" aria-label="回到调查墙中心">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="12" cy="12" r="2.5"/></svg>
-    </button>
-
     <div class="add-note-dock" :class="{ open: addMenuOpen }" @pointerdown.stop>
       <div id="new-material-menu" class="material-cards" :aria-hidden="!addMenuOpen">
         <button class="material-card clue-card" :tabindex="addMenuOpen ? 0 : -1" @click.stop="startPlacement('clue')">
@@ -125,6 +115,8 @@ const props = defineProps<{
   editEdgePosition: { x: number; y: number }
   defaultEdgeOptions?: any
   selectedNodeId?: string
+  searchQuery: string
+  panelOpen: boolean
 }>()
 
 const emit = defineEmits<{
@@ -145,8 +137,9 @@ const emit = defineEmits<{
 }>()
 
 const viewportRef = ref<HTMLElement | null>(null)
-const searchInput = ref<HTMLInputElement | null>(null)
-const searchQuery = ref('')
+const worldRef = ref<HTMLElement | null>(null)
+const isCentering = ref(false)
+let centerAnimationTimer: ReturnType<typeof setTimeout> | undefined
 const addMenuOpen = ref(false)
 const placingType = ref<'clue' | 'suspect' | null>(null)
 const menuNodeId = ref<string | null>(null)
@@ -158,7 +151,7 @@ const suppressClickId = ref<string | null>(null)
 const linenTexture = ref('')
 let initialFitComplete = false
 
-provide('noteSearchQuery', searchQuery)
+provide('noteSearchQuery', toRef(props, 'searchQuery'))
 provide('selectedNodeId', toRef(props, 'selectedNodeId'))
 provide('menuNodeId', menuNodeId)
 provide('linkingSourceId', linkingSourceId)
@@ -173,7 +166,6 @@ provide('linkedPins', computed(() => {
 provide('runNodeAction', runNodeAction)
 
 const nodes = computed(() => props.nodes)
-const edges = computed(() => props.edges)
 const worldStyle = computed<CSSProperties>(() => ({
   transform: `translate3d(${camera.value.x}px, ${camera.value.y}px, 0) scale(${camera.value.zoom})`,
 }))
@@ -245,6 +237,7 @@ function beginPan(event: PointerEvent) {
   if (event.button !== 0 || placingType.value) return
   const target = event.target as HTMLElement
   if (target.closest('.canvas-heading,.add-note-dock,.center-btn,.placement-hint,.edge-edit-toolbar,.thread-hitbox')) return
+  stopCentering()
   addMenuOpen.value = false
   panState.value = {
     startX: event.clientX,
@@ -258,6 +251,7 @@ function beginPan(event: PointerEvent) {
 function beginCardDrag(node: any, event: PointerEvent) {
   if (event.button !== 0 || linkingSourceId.value || placingType.value) return
   event.preventDefault()
+  stopCentering()
   addMenuOpen.value = false
   dragState.value = {
     id: String(node.id),
@@ -303,6 +297,7 @@ function onPointerUp() {
 }
 
 function handleWheel(event: WheelEvent) {
+  stopCentering()
   const rect = viewportRef.value?.getBoundingClientRect()
   if (!rect) return
   const oldZoom = camera.value.zoom
@@ -382,7 +377,31 @@ function onEdgeDoubleClick(edge: any, event: MouseEvent) {
   emit('on-edge-double-click', { edge, event })
 }
 
-function goToCenter() { fitView() }
+function stopCentering() {
+  if (!isCentering.value) return
+  const world = worldRef.value
+  if (world) {
+    const transform = new DOMMatrixReadOnly(getComputedStyle(world).transform)
+    camera.value = { x: transform.m41, y: transform.m42, zoom: transform.m11 }
+  }
+  isCentering.value = false
+  clearTimeout(centerAnimationTimer)
+}
+
+async function goToCenter() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    fitView()
+    return
+  }
+  stopCentering()
+  isCentering.value = true
+  await nextTick()
+  requestAnimationFrame(() => {
+    fitView()
+    clearTimeout(centerAnimationTimer)
+    centerAnimationTimer = setTimeout(() => { isCentering.value = false }, 440)
+  })
+}
 function saveEdgeLabelEdit() { emit('save-edge-label-edit') }
 function deleteCurrentEdge() { emit('delete-current-edge') }
 function toggleMaterialMenu() {
@@ -400,10 +419,6 @@ function cancelActiveMode() {
 }
 
 function onShortcut(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault()
-    searchInput.value?.focus()
-  }
   if (event.key === 'Escape') cancelActiveMode()
 }
 
@@ -422,6 +437,7 @@ watch(() => props.nodes.length, async length => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
+  clearTimeout(centerAnimationTimer)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('keydown', onShortcut)
@@ -467,19 +483,13 @@ onBeforeUnmount(() => {
   mix-blend-mode:soft-light;
 }
 .board-world { position:absolute; z-index:1; top:0; left:0; width:1px; height:1px; transform-origin:0 0; will-change:transform; }
+.board-world.centering { transition:transform 420ms cubic-bezier(.32,.72,0,1); }
 .edge-layer { position:absolute; z-index:1; top:0; left:0; width:1px; height:1px; pointer-events:auto; overflow:visible; }
 .board-card { position:absolute; z-index:2; top:0; left:0; cursor:grab; will-change:transform; }
 .board-card:active { cursor:grabbing; }
 
-.canvas-heading { position:absolute; z-index:12; top:24px; left:28px; right:28px; display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none; }
+.canvas-heading { position:absolute; z-index:12; top:24px; left:28px; pointer-events:none; }
 .canvas-heading>* { pointer-events:auto; }
-.canvas-heading>div { display:flex; flex-direction:column; gap:5px; color:rgba(76,49,28,.64); text-shadow:0 1px rgba(255,245,226,.48); }
-.canvas-heading strong { font-family:var(--serif); font-size:22px; font-weight:600; color:#50341f; }
-.eyebrow { font-family:var(--mono); font-size:9px; letter-spacing:.18em; }
-.search-box { width:min(300px,34vw); height:40px; display:flex; align-items:center; gap:9px; padding:0 12px; border:1px solid rgba(73,58,41,.18); border-radius:999px; background:rgba(247,243,234,.92); box-shadow:0 6px 20px rgba(57,44,28,.09); }
-.search-box svg { width:16px; fill:none; stroke:var(--ink-faint); stroke-width:1.8; }
-.search-box input { flex:1; min-width:0; border:0; outline:0; color:var(--ink); background:transparent; font-size:12px; }
-.search-box kbd { color:var(--ink-faint); font:9px var(--mono); padding:3px 5px; border-radius:4px; background:rgba(93,76,54,.08); }
 
 .placement-hint { position:absolute; z-index:20; left:50%; bottom:98px; transform:translateX(-50%); display:flex; align-items:center; gap:9px; padding:10px 12px 10px 15px; color:#f8f1e6; background:rgba(41,36,30,.94); border-radius:999px; box-shadow:0 14px 30px rgba(39,30,21,.3); font-size:12px; }
 .placement-dot { width:7px; height:7px; border-radius:50%; background:#e9a67d; box-shadow:0 0 0 5px rgba(233,166,125,.12); }
@@ -518,10 +528,11 @@ onBeforeUnmount(() => {
   .add-note-dock.open .suspect-card:hover { transform:translate3d(75px,-53px,0) rotate(1.5deg) scale(1.03); }
 }
 
-.center-btn { position:absolute; bottom:24px; right:24px; z-index:10; width:44px; height:44px; border-radius:50%; border:1px solid rgba(79,61,42,.18); background:rgba(247,243,234,.94); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:var(--shadow); transition:transform .16s ease-out,background .2s ease; line-height:0; padding:0; }
+.center-btn { width:36px; height:36px; border-radius:50%; border:1px solid rgba(79,61,42,.21); background:rgba(245,237,219,.91); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 3px 9px rgba(57,44,28,.13); transition:transform 190ms cubic-bezier(.23,1,.32,1),background-color 160ms ease,opacity 190ms ease; line-height:0; padding:0; }
 .center-btn:hover { background:var(--white); transform:scale(1.06); }
 .center-btn:active { transform:scale(.96); }
-.center-btn svg { width:20px; height:20px; fill:none; stroke:var(--ink-soft); stroke-width:1.7; }
+.center-btn svg { width:18px; height:18px; fill:none; stroke:var(--ink-soft); stroke-width:1.7; }
+.canvas-area.panel-open .center-btn { opacity:0; pointer-events:none; transform:scale(.94); }
 
 .edge-edit-toolbar { position:fixed; transform:translate(-50%,-50%); z-index:1000; display:flex; gap:10px; align-items:center; }
 .edge-edit-input-wrapper { background:rgba(255,253,248,.96); border-radius:24px; box-shadow:0 2px 8px rgba(0,0,0,.1); border:1px solid var(--rust); padding:4px 12px; }
@@ -530,16 +541,13 @@ onBeforeUnmount(() => {
 .edge-delete-btn:hover { background:#ffebee; border-color:#c62828; color:#c62828; }
 
 @media (max-width:760px) {
-  .canvas-heading { left:16px; right:16px; }
-  .canvas-heading>div { display:none; }
-  .search-box { margin-left:auto; width:min(260px,76vw); }
-  .search-box kbd { display:none; }
+  .canvas-heading { left:14px; }
   .add-note-dock { left:14px; bottom:14px; }
-  .center-btn { right:14px; bottom:14px; }
 }
 
 @media (prefers-reduced-motion:reduce) {
   .board-world,.board-card { will-change:auto; }
+  .board-world.centering,.center-btn { transition-duration:.01ms; }
   .add-note-trigger,.material-card,.trigger-plus { transition-duration:.01ms; }
 }
 </style>
