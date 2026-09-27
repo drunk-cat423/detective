@@ -1,43 +1,50 @@
 <template>
   <div class="panel-content chat-panel">
-    <div class="chat-messages" ref="chatMessagesRef">
+    <div ref="chatMessagesRef" class="chat-messages" role="log" aria-label="推理记录">
       <div v-if="chatHistory.length === 0" class="chat-empty">
-        💬 和助手小姐聊聊吧
+        <p>来和小识聊聊吧。</p>
       </div>
-      <div
-        v-for="(msg, idx) in chatHistory"
-        :key="idx"
-        :class="['chat-msg', msg.role]"
-      >
-        <img :src="msg.role === 'user' ? userAvatar : agentAvatar" :class="['avatar', msg.role]" />
-
-        <div v-if="msg.role === 'user'" class="msg-bubble">{{ msg.content }}</div>
-
-        <div v-else class="msg-bubble">
-          <template v-if="msg.content">
-            <div v-html="renderMarkdown(msg.content)"></div>
-          </template>
-          <template v-else-if="isThinking">
-            <span class="thinking-text">
-              小识正在努力思考
-              <span class="thinking-dots">...</span>
-            </span>
-          </template>
+      <div v-for="(msg, idx) in chatHistory" :key="idx" :class="['chat-msg', msg.role]">
+        <div class="msg-heading">
+          <img :src="msg.role === 'user' ? userAvatar : agentAvatar" class="avatar" :alt="msg.role === 'user' ? '我' : '小识'" />
+          <span>{{ msg.role === 'user' ? '我的提问' : '小识的推理' }}</span>
+          <small>{{ String(idx + 1).padStart(2, '0') }}</small>
+        </div>
+        <div v-if="msg.role === 'user'" class="msg-content">{{ msg.content }}</div>
+        <div v-else class="msg-content">
+          <div v-if="msg.content" v-html="renderMarkdown(msg.content)"></div>
+          <span v-else-if="isThinking" class="thinking-text">正在整理线索<span class="thinking-dots">…</span></span>
         </div>
       </div>
     </div>
 
     <div class="chat-input">
-      <input
-        :value="chatInput"
-        placeholder="输入消息..."
-        @keydown.enter="handleEnterKey"
-        @input="emit('update:chatInput', ($event.target as HTMLInputElement).value)"
-        :disabled="chatLoading"
-      />
-      <button @click="sendMessage" :disabled="chatLoading || !chatInput.trim()">发送</button>
-      <button @click="clearScreen" :disabled="chatHistory.length === 0">清屏</button>
-      <button @click="resetMemory" :disabled="chatHistory.length === 0" class="reset-btn">重置</button>
+      <div class="composer-meta">
+        <span class="composer-recipient">TO / 小识</span>
+        <div class="composer-actions" aria-label="会话操作">
+          <button type="button" @click="clearScreen" :disabled="chatHistory.length === 0" title="清空当前页面的记录">清空页面</button>
+          <button type="button" @click="resetMemory" :disabled="chatHistory.length === 0" title="重置小识对本案的记忆">重置记忆</button>
+        </div>
+      </div>
+      <div class="composer-row">
+        <input
+          type="text"
+          :value="chatInput"
+          placeholder="向小识提问，或记下一条疑点…"
+          aria-label="输入推理问题"
+          autocomplete="off"
+          @keydown.enter="handleComposerKeydown"
+          @input="handleComposerInput"
+          :disabled="chatLoading"
+        />
+        <button class="send-btn" type="button" aria-label="发送消息" title="发送消息" @click="sendMessage" :disabled="chatLoading || !chatInput.trim()">
+          <!-- Lucide send icon (ISC); see /third-party-notices.txt. -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+            <path d="m21.854 2.147-10.94 10.939" />
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -66,47 +73,38 @@ const emit = defineEmits<{
 }>()
 
 const chatMessagesRef = ref<HTMLElement | null>(null)
+const chatInput = computed(() => props.chatInput)
 
-const chatInput = computed({
-  get: () => props.chatInput,
-  set: (v) => emit('update:chatInput', v)
-})
-
-function renderMarkdown(text: string) {
-  if (!text) return ''
-  const rawHtml = marked(text) as string
-  return DOMPurify.sanitize(rawHtml)
+function renderMarkdown(value: string) {
+  return DOMPurify.sanitize(marked(value) as string)
 }
-
 function sendMessage() { emit('send') }
 function clearScreen() { emit('clear') }
 function resetMemory() { emit('reset') }
-function handleEnterKey(event: KeyboardEvent) { emit('enter-key', event) }
-
+function handleComposerKeydown(event: KeyboardEvent) {
+  if (event.isComposing) return
+  event.preventDefault()
+  emit('enter-key', event)
+}
+function handleComposerInput(event: Event) {
+  emit('update:chatInput', (event.target as HTMLInputElement).value)
+}
 function scrollToBottom() {
+  if (props.chatHistory.length === 0) {
+    nextTick(() => {
+      if (chatMessagesRef.value) chatMessagesRef.value.scrollTop = 0
+    })
+    return
+  }
   nextTick(() => {
-    if (chatMessagesRef.value) {
-      chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight
-    }
+    if (chatMessagesRef.value) chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight
   })
 }
-
-// 监听长度变化（新消息）
-watch(() => props.chatHistory.length, () => {
-  scrollToBottom()
-})
-
-// 深度监听内容变化（SSE 流式追加时自动下滑）
-watch(() => props.chatHistory, () => {
-  scrollToBottom()
-}, { deep: true })
-
+watch(() => props.chatHistory.length, scrollToBottom)
+watch(() => props.chatHistory, scrollToBottom, { deep: true })
 watch(() => props.isThinking, (thinking) => {
-  if (!thinking) {
-    scrollToBottom()
-  }
+  if (!thinking) scrollToBottom()
 })
-
 onMounted(() => {
   scrollToBottom()
   emit('mounted')
@@ -114,262 +112,55 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.chat-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 0;
+.chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0; color: #40392f; }
+.chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 22px 22px 3px; scrollbar-width: none; }
+.chat-messages::-webkit-scrollbar { display: none; }
+.chat-empty { display: grid; place-items: center; min-height: 100%; padding: 0 4px; text-align: center; }
+.chat-empty p { margin: 0; color: #897a69; font: 19px/1.5 var(--serif); letter-spacing: .08em; }
+.msg-heading small { color: #8c8070; font: 10px/1.4 'Courier New', monospace; letter-spacing: .12em; }
+.chat-msg { margin: 0 1px 26px 0; animation: note-arrive 240ms ease-out both; }
+.msg-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; color: #796d5c; font: 11px/1.2 var(--serif); letter-spacing: .12em; }
+.chat-msg.user .msg-heading { color: #925248; }
+.msg-heading small { margin-left: auto; }
+.avatar { width: 24px; height: 24px; object-fit: cover; border: 1px solid rgba(79, 62, 44, .34); padding: 2px; background: #eee6d6; }
+.msg-content { margin-left: 33px; padding: 0 4px 0 11px; border-left: 1px solid rgba(96, 79, 54, .25); font-size: 13px; line-height: 1.85; word-break: break-word; }
+.chat-msg.user .msg-content { border-left: 2px solid #9d5a50; color: #3e372e; }
+.msg-content :deep(p) { margin: 0 0 8px; }
+.msg-content :deep(p:last-child) { margin-bottom: 0; }
+.msg-content :deep(strong) { color: #8e453d; }
+.msg-content :deep(ul), .msg-content :deep(ol) { padding-left: 19px; margin: 5px 0 9px; }
+.msg-content :deep(code) { background: rgba(119, 93, 60, .1); padding: 1px 3px; font-size: .92em; }
+.msg-content :deep(pre) { overflow-x: auto; padding: 10px; background: #e9dfca; border: 1px solid rgba(92, 70, 46, .2); font-size: 12px; }
+.thinking-text { color: #8f7666; font-family: var(--serif); }
+.thinking-dots { animation: blink 1.4s ease-in-out infinite; }
+.chat-input { flex: none; position: relative; padding: 9px 18px 6px 3px; border-top: 1px solid rgba(83, 66, 43, .22); background: transparent; }
+.composer-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 18px; margin-bottom: 5px; }
+.composer-recipient { flex: none; color: #806858; font: 11px/1.3 'Courier New', monospace; letter-spacing: .08em; }
+.composer-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: end; column-gap: 12px; height: 36px; }
+.composer-row input { display: block; width: 100%; min-width: 0; height: 36px; box-sizing: border-box; padding: 8px 2px 0; border: 0; border-bottom: 1px solid rgba(96, 80, 58, .44); border-radius: 0; background: transparent; color: #40392f; font: 14px/26px var(--serif); box-shadow: none; }
+.composer-row input::placeholder { color: #918573; }
+.composer-row input:focus { outline: none; }
+.send-btn { position: relative; top: 3px; display: flex; align-items: flex-end; justify-content: center; width: 34px; height: 34px; padding: 0; border: 0; background: transparent; color: #98534a; cursor: pointer; transition: color 150ms ease; }
+.send-btn svg { display: block; width: 24px; height: 24px; transform: translateY(2px); transition: transform 160ms ease; }
+.send-btn:hover:not(:disabled) { color: #763e37; }
+.send-btn:hover:not(:disabled) svg { transform: translate(2px, 2px); }
+.send-btn:focus-visible { outline: 2px solid #99564b; outline-offset: 1px; }
+.send-btn:disabled { color: #b7a89a; cursor: not-allowed; }
+.composer-actions { display: flex; justify-content: flex-end; gap: 13px; }
+.composer-actions button { padding: 2px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: #817160; font: 12px var(--serif); cursor: pointer; white-space: nowrap; }
+.composer-actions button:hover:not(:disabled), .composer-actions button:focus-visible { color: #8e493f; border-bottom-color: currentColor; }
+.composer-actions button:disabled { color: #8e806f; cursor: not-allowed; }
+@keyframes note-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes blink { 50% { opacity: .35; } }
+@media (max-width: 480px) {
+  .chat-messages { padding-right: 11px; }
+  .chat-input { padding-right: 8px; }
+  .composer-actions { gap: 7px; }
+  .composer-actions button { font-size: 10px; }
 }
-
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  background:
-    radial-gradient(circle at 0% 100%, rgba(212, 168, 67, 0.04) 0%, transparent 40%),
-    radial-gradient(circle at 100% 0%, rgba(58, 123, 200, 0.04) 0%, transparent 40%),
-    var(--cream);
-}
-
-.chat-empty {
-  color: var(--gold-deep);
-  text-align: center;
-  margin-top: 80px;
-  font-size: 15px;
-  opacity: 0.7;
-}
-
-.chat-msg {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 16px;
-  animation: fadeInUp 0.4s ease;
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.chat-msg.user {
-  align-items: flex-end;
-}
-.chat-msg.assistant {
-  align-items: flex-start;
-}
-
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  margin-bottom: 6px;
-  border: 3px solid var(--white);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  background: #e0e0e0;
-  display: block;
-}
-
-.avatar[src=""], .avatar:not([src]) {
-  background: #e0e0e0;
-}
-
-.chat-msg.user .avatar {
-  background: linear-gradient(135deg, var(--traveler-blue), #5B9BD5);
-}
-
-.chat-msg.assistant .avatar {
-  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
-}
-
-.msg-bubble {
-  max-width: 85%;
-  min-width: 60px;
-  padding: 12px 16px;
-  border-radius: 18px;
-  font-size: 14px;
-  line-height: 1.6;
-  word-break: break-word;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  position: relative;
-}
-
-.chat-msg.user .msg-bubble {
-  background: linear-gradient(135deg, var(--traveler-blue), #4A8FD0);
-  color: var(--white);
-  border: none;
-  border-bottom-right-radius: 4px;
-  box-shadow: 0 4px 16px rgba(58, 123, 200, 0.2);
-}
-
-.chat-msg.assistant .msg-bubble {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-}
-
-.msg-bubble :deep(p) {
-  margin: 0 0 6px;
-}
-
-.msg-bubble :deep(p):last-child {
-  margin-bottom: 0;
-}
-
-.msg-bubble :deep(strong) {
-  color: var(--gold-deep);
-  font-weight: 700;
-}
-
-.msg-bubble :deep(ul), .msg-bubble :deep(ol) {
-  padding-left: 20px;
-  margin: 4px 0;
-}
-
-.msg-bubble :deep(code) {
-  background: var(--gold-pale);
-  color: var(--gold-deep);
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.msg-bubble :deep(pre) {
-  background: #2D2D2D;
-  color: #F0E6C8;
-  padding: 12px;
-  border-radius: 12px;
-  overflow-x: auto;
-  font-size: 12px;
-  margin: 8px 0;
-}
-
-.chat-input {
-  border-top: 2px solid var(--border);
-  padding: 12px 16px;
-  display: flex;
-  gap: 8px;
-  background: var(--white);
-  position: relative;
-  padding-right: 22px;
-}
-
-.chat-input::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--gold), var(--traveler-blue));
-}
-
-.chat-input input {
-  flex: 1;
-  padding: 10px 18px;
-  border: 2px solid #efd587;
-  border-radius: 24px;
-  font-size: 14px;
-  background: var(--cream);
-  transition: all 0.3s;
-  font-family: inherit;
-}
-
-.chat-input input:focus {
-  outline: none;
-  background: var(--white);
-  box-shadow: 0 0 0 4px rgba(212, 168, 67, 0.35);
-}
-
-.chat-input input::placeholder {
-  color: var(--text-secondary);
-  opacity: 0.6;
-}
-
-.chat-input button {
-  padding: 8px 14px;
-  border-radius: 20px;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.3s;
-  outline: none;
-}
-
-.chat-input button:first-of-type {
-  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
-  color: var(--white);
-  box-shadow: 0 2px 8px rgba(212, 168, 67, 0.25);
-  border: 2px solid #efd587;
-}
-
-.chat-input button:first-of-type:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(212, 168, 67, 0.35);
-}
-
-.chat-input button:first-of-type:disabled {
-  opacity: 0.5;
-  transform: none;
-  cursor: not-allowed;
-}
-
-.chat-input button:not(:first-of-type) {
-  background: var(--white);
-  color: var(--text-secondary);
-  border: 2px solid #efd587;
-  outline: none;
-}
-
-.chat-input button:not(:first-of-type):hover {
-  color: var(--gold-deep);
-  transform: translateY(-2px);
-}
-
-.chat-input button.reset-btn {
-  background: var(--white);
-  color: #c62828;
-  border: 2px solid #e75765;
-}
-
-.chat-input button.reset-btn:hover {
-  background: #ffebee;
-  border-color: #c62828;
-  color: #c62828 !important;
-  transform: translateY(-2px);
-}
-
-.thinking-text {
-  color: var(--gold-deep);
-  font-style: italic;
-  font-size: 14px;
-  animation: blink 1.5s ease-in-out infinite;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.thinking-text::before {
-  content: '✦';
-  font-size: 16px;
-  animation: spin 2s linear infinite;
-}
-
-.thinking-dots {
-  display: inline-block;
-  animation: blink 1.5s ease-in-out infinite;
-  animation-delay: 0.3s;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-msg { animation: none; }
+  .send-btn { transition: none; }
+  .send-btn svg { transition: none; }
 }
 </style>

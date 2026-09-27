@@ -47,7 +47,7 @@
               <small>{{ activeMeta.mark }} / 03</small>
             </div>
             <div class="document-rule" aria-hidden="true"><i></i></div>
-            <div ref="documentSheetRef" class="document-sheet"><slot /></div>
+            <div ref="documentSheetRef" class="document-sheet" :class="{ 'chat-sheet': activeTab === 'chat' }"><slot /></div>
           </section>
         </Transition>
         <Transition name="continuation">
@@ -427,6 +427,7 @@ function onTabKeydown(event: KeyboardEvent) {
 .document-rule { position: absolute; z-index: 6; top: 69px; right: 21px; left: 58px; height: 5px; border-top: 1px solid rgba(75, 62, 44, .19); }
 .document-rule i { display: block; width: 60px; margin-top: -2px; border-top: 3px solid var(--file-red); transform: rotate(-1deg); }
 .document-sheet { position: absolute; z-index: 2; inset: 75px 0 0; overflow: auto; padding: 14px 10px 34px 34px; box-sizing: border-box; scrollbar-width: none; }
+.document-sheet.chat-sheet { overflow: hidden; padding-bottom: 14px; }
 .document-sheet :deep(.chat-messages) { scrollbar-width: none; }
 .document-sheet::-webkit-scrollbar,
 .document-sheet :deep(.chat-messages::-webkit-scrollbar) { display: none; width: 0; height: 0; }
@@ -499,21 +500,17 @@ function onTabKeydown(event: KeyboardEvent) {
 }
 
 .document-sheet :deep(> .panel-content) { min-height: calc(100% - 48px); box-sizing: border-box; }
-.document-sheet :deep(> .chat-panel) { height: calc(100% - 48px); }
+.document-sheet :deep(> .chat-panel) { height: 100%; min-height: 0; }
 .document-sheet :deep(.edit-field), .document-sheet :deep(.color-picker) { padding-right: 12px; padding-left: 4px; }
 .document-sheet :deep(.edit-field label) { color: var(--file-ink); font-family: var(--serif); font-size: 13px; letter-spacing: .04em; }
-.document-sheet :deep(textarea), .document-sheet :deep(input) { border: 1px solid rgba(96, 78, 52, .26); border-radius: 3px; background: rgba(255, 253, 247, .68); box-shadow: inset 0 1px 3px rgba(68, 51, 31, .045); transition: border-color 130ms ease, box-shadow 130ms ease, background-color 130ms ease; }
-.document-sheet :deep(textarea:focus), .document-sheet :deep(input:focus) { border-color: rgba(149, 72, 63, .62); box-shadow: 0 0 0 2px rgba(149, 72, 63, .11); background: #fffdf8; }
+.document-sheet:not(.chat-sheet) :deep(textarea), .document-sheet:not(.chat-sheet) :deep(input) { border: 1px solid rgba(96, 78, 52, .26); border-radius: 3px; background: rgba(255, 253, 247, .68); box-shadow: inset 0 1px 3px rgba(68, 51, 31, .045); transition: border-color 130ms ease, box-shadow 130ms ease, background-color 130ms ease; }
+.document-sheet:not(.chat-sheet) :deep(textarea:focus), .document-sheet:not(.chat-sheet) :deep(input:focus) { border-color: rgba(149, 72, 63, .62); box-shadow: 0 0 0 2px rgba(149, 72, 63, .11); background: #fffdf8; }
 .document-sheet :deep(.color-swatch) { width: 24px; height: 24px; border-width: 2px; box-shadow: 0 1px 3px rgba(46, 34, 19, .14); transition: transform 130ms cubic-bezier(.23, 1, .32, 1), box-shadow 130ms ease; }
 .document-sheet :deep(.color-swatch.active) { border-color: var(--file-red); box-shadow: 0 0 0 2px rgba(149, 72, 63, .13); }
 .document-sheet :deep(.edit-btn), .document-sheet :deep(.known-info-button) { border-radius: 3px; transition: transform 130ms cubic-bezier(.23, 1, .32, 1), background-color 130ms ease, box-shadow 130ms ease; }
 .document-sheet :deep(.save-btn), .document-sheet :deep(.known-info-button) { border-color: #773d37; color: #fff8ee; background: var(--file-red); box-shadow: 0 2px 5px rgba(88, 45, 39, .18); }
 .document-sheet :deep(.edit-btn:active), .document-sheet :deep(.known-info-button:active) { transform: scale(.97); }
 .document-sheet :deep(.chat-messages) { background: transparent; }
-.document-sheet :deep(.chat-input) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding: 10px 12px 4px 4px; border-top: 1px solid rgba(77, 62, 42, .2); background: rgba(247, 242, 231, .76); }
-.document-sheet :deep(.chat-input::before) { display: none; }
-.document-sheet :deep(.chat-input input) { grid-column: 1 / -1; width: 100%; min-width: 0; box-sizing: border-box; }
-.document-sheet :deep(.chat-input button) { min-width: 0; margin: 0; padding: 7px 5px; border-radius: 3px; }
 .document-sheet :deep(.upload-area) { margin-right: 10px; border: 1px dashed rgba(111, 90, 58, .48); border-radius: 3px; background: rgba(255, 253, 247, .36); transition: transform 140ms cubic-bezier(.23, 1, .32, 1), border-color 120ms ease, background-color 120ms ease; }
 .document-sheet :deep(.doc-list), .document-sheet :deep(.known-info-list li), .document-sheet :deep(.info-content) { border-radius: 3px; background: rgba(255, 253, 247, .62); }
 .document-sheet :deep(.info-hint) { border-radius: 2px; border-left-color: var(--file-red); background: rgba(149, 72, 63, .08); color: #70443e; }
