@@ -20,7 +20,7 @@
     <div class="timeline-actions">
       <Transition name="timeline-action">
         <button v-if="open" class="record-event-btn" :class="{ recording: showAdd }" :aria-label="showAdd ? '取消记录事件' : '记录事件'" @click="emit('toggle-add')">
-          {{ showAdd ? '取消记录' : '＋ 记录事件' }}
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="showAdd ? 'm6 6 12 12M6 18 18 6' : 'M12 5v14M5 12h14'"/></svg><span>{{ showAdd ? '取消记录' : '记录事件' }}</span>
         </button>
       </Transition>
       <div ref="searchAreaRef" class="case-search" :class="{ open: searchOpen }">
@@ -169,24 +169,28 @@ onBeforeUnmount(() => {
 }
 
 .record-event-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   padding: 6px 14px;
-  background: var(--ink);
-  border: 1px solid var(--ink);
-  border-radius: 999px;
-  color: #f8f1e6;
+  background: #d7d9bf;
+  border: 1px solid #c5c9ab;
+  border-radius: 2px;
+  color: #4e624e;
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
-  outline: none;
   transition: transform 140ms cubic-bezier(.23,1,.32,1), background 160ms ease, border-color 160ms ease;
   white-space: nowrap;
 }
 .record-event-btn:hover {
-  background: var(--rust-dark);
-  border-color: var(--rust-dark);
+  background: #c8ceb0;
+  border-color: #b4bd9c;
   transform: translateY(-1px);
 }
 .record-event-btn:active { transform: translateY(0) scale(.97); }
+.record-event-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.record-event-btn:focus-visible { outline: 2px solid #8e9b74; outline-offset: 3px; }
 
 .back-btn {
   color: var(--ink-soft);
@@ -250,9 +254,8 @@ onBeforeUnmount(() => {
   .product-mark { font-size: 14px; }
   .timeline-toggle { font-size: 13px; }
   .timeline-toggle small { display: none; }
-  .record-event-btn { width:36px; height:36px; flex:0 0 36px; padding:0; border-radius:50%; font-size:0; }
-  .record-event-btn::before { content:'＋'; font:20px/1 var(--serif); }
-  .record-event-btn.recording::before { content:'×'; font-size:22px; }
+  .record-event-btn { width:32px; height:32px; flex:0 0 32px; padding:0; justify-content:center; }
+  .record-event-btn span { display:none; }
 }
 
 @media (max-width: 900px) {

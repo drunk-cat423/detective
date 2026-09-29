@@ -12,6 +12,7 @@
     <div id="case-timeline" class="timeline-reveal" :class="{ open: timelineOpen }" :aria-hidden="!timelineOpen">
       <div class="timeline-reveal-inner">
         <TimelinePanel
+          :active="timelineOpen"
           v-model:eventYear="eventYear"
           v-model:eventMonth="eventMonth"
           v-model:eventDay="eventDay"
