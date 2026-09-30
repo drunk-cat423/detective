@@ -13,6 +13,7 @@ class TimelineEvent(Base):
     id = Column(Integer, primary_key=True, index=True)
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
     event_time = Column(String(100), nullable=False)
+    title = Column(String(120), nullable=False, default="", server_default="")
     sort_order = Column(Float, default=0)
     description = Column(Text, nullable=False)
     source = Column(SqlEnum(EventSource), nullable=False)

@@ -19,11 +19,13 @@
           v-model:eventHour="eventHour"
           v-model:eventMinute="eventMinute"
           v-model:newEventDesc="newEventDesc"
+          v-model:newEventTitle="newEventTitle"
           :show-form="showAddEvent"
           :sorted-events="sortedEvents"
           :hovered-event="hoveredEvent"
           :locked-events="lockedEvents"
           @submit="addTimelineEvent"
+          @cancel-record="showAddEvent = false"
           @delete="handleDeleteEvent"
           @show-popup="showPopup"
           @dot-mouse-leave="onDotMouseLeave"
@@ -181,7 +183,7 @@ const {
 // Timeline composable
 const {
   timelineOpen, showAddEvent,
-  eventYear, eventMonth, eventDay, eventHour, eventMinute, newEventDesc,
+  eventYear, eventMonth, eventDay, eventHour, eventMinute, newEventDesc, newEventTitle,
   hoveredEvent, lockedEvents, sortedEvents,
   addTimelineEvent, handleDeleteEvent, loadTimelineEvents,
   showPopup, onDotMouseLeave, onPopupMouseEnter, onPopupMouseLeave,

@@ -16,6 +16,7 @@ export function useTimeline(caseId: number) {
   const eventHour = ref(0)
   const eventMinute = ref(0)
   const newEventDesc = ref('')
+  const newEventTitle = ref('')
 
   const hoveredEvent = ref<any>(null)
   const lockedEvents = ref<Set<number>>(new Set())
@@ -142,16 +143,18 @@ export function useTimeline(caseId: number) {
   }
 
   async function addTimelineEvent() {
-    if (!newEventDesc.value.trim()) return
+    if (!newEventTitle.value.trim() || !newEventDesc.value.trim()) return
     const eventTimeStr = `${eventYear.value}年${eventMonth.value}月${eventDay.value}日 ${String(eventHour.value).padStart(2, '0')}:${String(eventMinute.value).padStart(2, '0')}`
 
     try {
       await createTimelineEvent(caseId, {
         event_time: eventTimeStr,
+        title: newEventTitle.value.trim(),
         description: newEventDesc.value.trim(),
         source: 'manual',
       })
       newEventDesc.value = ''
+      newEventTitle.value = ''
       showAddEvent.value = false
       await loadTimelineEvents()
     } catch (err) {
@@ -182,6 +185,7 @@ export function useTimeline(caseId: number) {
     eventHour,
     eventMinute,
     newEventDesc,
+    newEventTitle,
     hoveredEvent,
     lockedEvents,
     sortedEvents,

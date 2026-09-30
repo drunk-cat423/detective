@@ -13,7 +13,7 @@
         aria-controls="case-timeline"
         @click="$emit('update:open', !open)"
       >
-        <span>调查时间线 <small>{{ open ? '收起' : '展开' }}</small></span>
+        <span>调查时间线</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
       </button>
     </div>
@@ -160,14 +160,6 @@ onBeforeUnmount(() => {
 .search-box kbd { color:var(--ink-faint); font:9px var(--mono); white-space:nowrap; }
 .search-trigger { display:none; }
 
-.timeline-toggle small {
-  margin-left: 7px;
-  color: var(--ink-faint);
-  font: 8px var(--mono);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
 .record-event-btn {
   display: flex;
   align-items: center;
@@ -253,7 +245,6 @@ onBeforeUnmount(() => {
   .timeline-left > i { display: none; }
   .product-mark { font-size: 14px; }
   .timeline-toggle { font-size: 13px; }
-  .timeline-toggle small { display: none; }
   .record-event-btn { width:32px; height:32px; flex:0 0 32px; padding:0; justify-content:center; }
   .record-event-btn span { display:none; }
 }

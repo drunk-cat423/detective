@@ -1,143 +1,112 @@
 <template>
-  <div class="home">
-    <aside class="archive-rail">
-      <div class="brand">Detective<i>●</i></div>
-      <p>把散落的信息钉在一起，直到事实浮出墙面。</p>
-      <span class="rail-label">ARCHIVE</span>
-      <nav>
-        <button class="active"><span>⌁</span>全部案件 <b>{{ cases.length }}</b></button>
-        <button><span>◌</span>最近查看</button>
-      </nav>
-      <blockquote>每条线索都在等待一个正确的位置。</blockquote>
-    </aside>
-
-    <main class="archive-main">
-      <header class="header">
-        <div>
-          <span class="eyebrow">PRIVATE INVESTIGATION ARCHIVE</span>
-          <h1>案件档案室</h1>
-          <p>建立案件，整理线索、人物关系与时间线。</p>
-        </div>
-        <button v-if="showLogout" class="logout-btn" @click="handleLogout">退出登录</button>
-      </header>
-
-      <section class="create-form" aria-label="新建案件">
-        <div class="create-mark">＋</div>
-        <label>
-          <span>OPEN A NEW FILE / 新案件</span>
-          <input v-model="newCaseName" placeholder="输入案件名称" @keyup.enter="handleCreate" />
-        </label>
-        <button @click="handleCreate" :disabled="!newCaseName.trim()">建立档案</button>
-      </section>
-
-      <div class="section-heading">
-        <span>ACTIVE CASES</span><i></i><b>{{ cases.length }} 件</b>
-      </div>
-
-      <section v-if="cases.length" class="case-list">
-        <article v-for="(c, index) in cases" :key="c.id" class="case-card" @click="$router.push(`/case/${c.id}`)">
-          <div class="folder-tab">CASE {{ String(index + 1).padStart(2, '0') }}</div>
-          <div class="case-seal">{{ c.name.slice(0, 1).toUpperCase() }}</div>
-          <div class="case-copy">
-            <span class="case-id">FILE NO. {{ c.id }}</span>
-            <h2>{{ c.name }}</h2>
-            <p>{{ c.description || '尚未填写案件摘要。进入档案后开始整理调查材料。' }}</p>
-            <time>{{ new Date(c.created_at).toLocaleString() }}</time>
+  <main class="home">
+    <header class="sitebar">
+      <div class="brand">Detective<i /></div>
+      <div class="search-control" :class="{'search-instant': searchInstant}" @focusout="onSearchBlur">
+        <button ref="searchTrigger" class="search-trigger" :tabindex="searchOpen ? -1 : 0" :aria-expanded="searchOpen" aria-controls="case-search" @click="openSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><span>查找案件</span></button>
+        <Transition name="search-reveal">
+          <div v-if="searchOpen" id="case-search" class="search-sheet">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg>
+            <input ref="searchInput" v-model="query" type="search" aria-label="查找案件" placeholder="案件名称或关键词…" @keydown.esc.prevent.stop="escapeSearch" />
+            <button class="search-clear" :aria-label="query ? '清空搜索' : '收起搜索'" @click="resetSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
           </div>
-          <span class="open-case">打开档案 <b>→</b></span>
-          <button class="delete-case-btn" @click.stop="handleDelete(c.id)" aria-label="删除案件">删除</button>
-        </article>
-      </section>
-      <section v-else class="empty-archive">
-        <span>＋</span><h2>档案柜还是空的</h2><p>在上方为第一起案件建立档案。</p>
-      </section>
-    </main>
-  </div>
+        </Transition>
+      </div>
+      <button class="new" @click="openCreate"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5h7l2 3h9v12H3V8Z"/><path d="M9 14h6m-3-3v6"/></svg><span>新建案件</span></button>
+      <button v-if="showLogout" class="logout" @click="logout">退出登录</button>
+    </header>
+    <div class="heading"><h1>案件档案室</h1><span>{{ filtered.length }} 份档案</span></div>
+    <p v-if="listError" class="notice" role="alert">{{ listError }} <button @click="fetchCases">重试</button></p><p v-else-if="loading" class="notice" role="status">正在取出档案…</p>
+    <section v-else-if="filtered.length" class="archive" aria-label="案件档案">
+      <button v-for="(c,i) in filtered" :key="c.id" class="dossier" :style="{'--i':Math.min(i,6),'--angle':['-1.5deg','1.1deg','-.7deg'][i%3]}" :aria-label="`打开档案：${c.name}`" @click="openCase(c,$event)">
+        <span class="back" aria-hidden="true"/><span class="paper second" aria-hidden="true"/><span class="paper" aria-hidden="true"><small>CASE {{ number(c.id) }}</small><span class="lines"/></span>
+        <span class="front"><span class="label"><small>NO. {{ number(c.id) }}</small><span class="name">{{ c.name }}</span><span v-if="c.description" class="description">{{ c.description }}</span></span><time :datetime="c.created_at">{{ date(c.created_at) }}</time><span class="stamp" aria-hidden="true">案件档案</span></span>
+        <span class="flap" aria-hidden="true"/><span class="cord" aria-hidden="true"><svg viewBox="0 0 28 70"><path d="M14 4C-4 2 0 23 15 20S29 3 15 3C4 8 23 54 15 66S-3 61 13 49s22 10 2 15L15 10"/></svg></span>
+      </button>
+    </section>
+    <section v-else class="empty"><h2>{{ query.trim()?'没有找到这份档案':'建立第一份案件档案' }}</h2><button v-if="query.trim()" @click="query=''">查看全部案件</button><button v-else @click="openCreate">新建案件</button></section>
+    <dialog ref="dialog" class="archive-dialog" aria-labelledby="dialog-title" @cancel.prevent="close(true)" @click="outside">
+      <div ref="board" class="opened" :class="{'create-card':creating}"><button class="close" aria-label="收起档案" :disabled="busy" @click="close($event.detail===0)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button><div class="document">
+        <template v-if="creating"><h2 id="dialog-title">建立新档案</h2><form @submit.prevent="create"><input ref="nameInput" v-model="newName" aria-label="案件名称" placeholder="案件名称…" required maxlength="120" :disabled="busy"/><p v-if="error" class="error" role="alert">{{ error }}</p><div class="actions"><button type="button" class="quiet" :disabled="busy" @click="close(true)">取消</button><button class="enter" :disabled="busy||!newName.trim()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5h7l2 3h9v12H3V8Z"/><path d="M9 14h6m-3-3v6"/></svg>{{ busy?'建立中…':'建立档案' }}</button></div></form></template>
+        <template v-else-if="selected"><small class="docid">CASE / {{ number(selected.id) }}</small><h2 id="dialog-title">{{ selected.name }}</h2><div class="rule"/><span class="docstamp" aria-hidden="true">案件档案</span><p v-if="selected.description" class="summary">{{ selected.description }}</p><time :datetime="selected.created_at">{{ date(selected.created_at) }}</time><p v-if="error" class="error" role="alert">{{ error }}</p><div class="actions"><button class="delete" :disabled="busy" @click="remove"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/></svg>{{ busy?'删除中…':'删除案件' }}</button><button class="enter" :disabled="busy" @click="enter">进入调查<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button></div></template>
+      </div></div>
+    </dialog>
+  </main>
 </template>
-
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { getCases, createCase, deleteCaseApi } from '@/api/index'
-
-const cases = ref<any[]>([])
-const newCaseName = ref('')
-const showLogout = localStorage.getItem('auth_enabled') === 'true'
-
-const handleLogout = () => {
-  localStorage.removeItem('auth_token')
-  localStorage.removeItem('auth_enabled')
-  window.location.href = '/login'
-}
-
-const fetchCases = async () => {
-  try { cases.value = (await getCases()).data }
-  catch (err) { console.error('获取案件列表失败', err) }
-}
-
-const handleCreate = async () => {
-  if (!newCaseName.value.trim()) return
-  try {
-    await createCase(newCaseName.value.trim())
-    newCaseName.value = ''
-    await fetchCases()
-  } catch (err) { console.error('创建案件失败', err) }
-}
-
-async function handleDelete(id: number) {
-  if (!confirm('确定要删除该案件吗？所有便签、连线、时间线、对话历史将被永久删除。')) return
-  try { await deleteCaseApi(id); await fetchCases() }
-  catch (err) { console.error('删除案件失败', err) }
-}
-
+import { ref,computed,nextTick,onMounted,onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
+import { getCases,createCase,deleteCaseApi } from '@/api/index'
+interface CaseFile {id:number;name:string;description?:string|null;created_at:string}
+const router=useRouter(),cases=ref<CaseFile[]>([]),query=ref(''),loading=ref(true),listError=ref(''),error=ref(''),newName=ref(''),selected=ref<CaseFile|null>(null),creating=ref(false),busy=ref(false)
+const dialog=ref<HTMLDialogElement>(),board=ref<HTMLElement>(),nameInput=ref<HTMLInputElement>()
+const searchOpen=ref(false),searchInstant=ref(false),searchInput=ref<HTMLInputElement>(),searchTrigger=ref<HTMLButtonElement>()
+async function openSearch(event:MouseEvent){searchInstant.value=event.detail===0;searchOpen.value=true;await nextTick();searchInput.value?.focus()}
+async function resetSearch(){if(query.value){query.value='';await nextTick();searchInput.value?.focus()}else{searchOpen.value=false;searchTrigger.value?.focus()}}
+function escapeSearch(){searchInstant.value=true;void resetSearch()}
+function onSearchBlur(event:FocusEvent){if(!query.value&&(event.currentTarget as HTMLElement)?.contains(event.relatedTarget as Node|null)===false)searchOpen.value=false}
+const filtered=computed(()=>cases.value.filter(c=>`${c.name} ${c.description||''}`.includes(query.value.trim())))
+const showLogout=localStorage.getItem('auth_enabled')==='true'
+let origin:HTMLElement|null=null,animation:Animation|undefined,closing=false
+const number=(id:number)=>String(id).padStart(3,'0')
+function date(value:string){const d=new Date(value);return Number.isNaN(d.getTime())?'':`${d.getFullYear()} / ${String(d.getMonth()+1).padStart(2,'0')} / ${String(d.getDate()).padStart(2,'0')}`}
+const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches
+function logout(){localStorage.removeItem('auth_token');localStorage.removeItem('auth_enabled');window.location.href='/login'}
+async function fetchCases(){loading.value=true;listError.value='';try{cases.value=(await getCases()).data}catch{listError.value='档案暂时没有取到，请重试。'}finally{loading.value=false}}
+function sourceTransform(){if(!origin||!board.value)return 'rotate(-.6deg)';const a=origin.getBoundingClientRect(),b=board.value.getBoundingClientRect();return `translate(${a.left+a.width/2-b.left-b.width/2}px,${a.top+a.height/2-b.top-b.height/2}px) scale(${Math.min(a.width/b.width,.8)}) rotate(-3deg)`}
+async function show(event:MouseEvent){origin=event.currentTarget as HTMLElement;error.value='';closing=false;const keyboard=event.detail===0;await nextTick();dialog.value?.showModal();animation?.cancel();if(board.value&&!keyboard&&!reduced())animation=board.value.animate([{transform:creating.value?'translateY(18px) scale(.96) rotate(-1.2deg)':sourceTransform(),opacity:creating.value?0:.6},{transform:'rotate(-.6deg)',opacity:1}],{duration:creating.value?230:290,easing:'cubic-bezier(.22,1,.36,1)'})}
+function openCase(c:CaseFile,event:MouseEvent){selected.value=c;creating.value=false;void show(event)}
+async function openCreate(event:MouseEvent){creating.value=true;selected.value=null;newName.value='';await show(event);nameInput.value?.focus()}
+async function close(keyboard=false){if(busy.value||closing||!dialog.value?.open)return;closing=true;animation?.cancel();if(board.value&&origin?.isConnected&&!keyboard&&!reduced()){animation=board.value.animate([{transform:'rotate(-.6deg)',opacity:1},{transform:creating.value?'translateY(12px) scale(.97) rotate(-1.2deg)':sourceTransform(),opacity:0}],{duration:180,easing:'cubic-bezier(.32,.72,0,1)'});try{await animation.finished}catch{ /* Cancelled on unmount. */ }}dialog.value?.close();closing=false}
+function outside(e:MouseEvent){if(e.target===dialog.value)void close()}
+async function create(){if(busy.value||!newName.value.trim())return;busy.value=true;error.value='';try{await createCase(newName.value.trim());query.value='';await fetchCases();busy.value=false;await close(true)}catch{error.value='建立档案失败，请重试。'}finally{busy.value=false}}
+async function remove(){if(!selected.value||busy.value)return;if(!confirm('确定要删除该案件吗？所有便签、连线、时间线、对话历史将被永久删除。'))return;busy.value=true;error.value='';try{await deleteCaseApi(selected.value.id);await fetchCases();busy.value=false;await close(true)}catch{error.value='删除失败，档案仍保留，请重试。'}finally{busy.value=false}}
+function enter(){if(!selected.value)return;dialog.value?.close();void router.push(`/case/${selected.value.id}`)}
 onMounted(fetchCases)
+onBeforeUnmount(()=>{animation?.cancel();dialog.value?.close()})
 </script>
-
 <style scoped>
-.home { min-height: calc(100vh - 36px); display: grid; grid-template-columns: 220px minmax(0, 1fr); background: radial-gradient(circle at 88% 12%, rgba(255,255,255,.48), transparent 24%), var(--paper); }
-.archive-rail { min-height: inherit; display: flex; flex-direction: column; padding: 34px 22px 28px; border-right: 1px solid var(--line); background: rgba(235,227,213,.62); }
-.brand { font-family: var(--serif); font-size: 27px; font-weight: 700; letter-spacing: -.02em; }
-.brand i { margin-left: 3px; color: var(--rust); font-size: 10px; font-style: normal; vertical-align: top; }
-.archive-rail > p { margin: 9px 0 28px; color: var(--ink-soft); font-size: 12px; line-height: 1.65; }
-.rail-label, .eyebrow, .section-heading span, .create-form label > span, .case-id { color: var(--ink-faint); font: 9px var(--mono); letter-spacing: .16em; }
-.archive-rail nav { display: grid; gap: 5px; margin-top: 8px; }
-.archive-rail nav button { width: 100%; display: flex; align-items: center; gap: 9px; padding: 10px; border: 0; border-radius: 10px; color: var(--ink-soft); background: transparent; text-align: left; cursor: default; font-size: 12px; }
-.archive-rail nav button.active { color: var(--ink); background: rgba(255,255,255,.58); box-shadow: 0 2px 9px rgba(63,49,31,.06); }
-.archive-rail nav b { margin-left: auto; color: var(--rust); font: 10px var(--mono); }
-.archive-rail blockquote { margin: auto 0 0; padding: 0 2px 0 13px; border-left: 2px solid var(--rust); color: var(--ink-soft); font-family: var(--serif); font-size: 13px; font-style: italic; line-height: 1.55; }
-.archive-main { width: min(1080px, 100%); margin: 0 auto; padding: 46px clamp(28px, 5vw, 74px) 70px; }
-.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 34px; }
-.header h1 { margin: 8px 0 5px; color: var(--ink); font-family: var(--serif); font-size: clamp(34px, 5vw, 56px); font-weight: 600; line-height: 1; letter-spacing: -.05em; }
-.header p { margin: 0; color: var(--ink-soft); font-size: 13px; }
-.logout-btn { background: transparent; border: 1px solid var(--line); color: var(--ink-soft); padding: 8px 13px; border-radius: 999px; cursor: pointer; font-size: 12px; transition: .2s; }
-.logout-btn:hover { background: var(--white); color: var(--rust-dark); border-color: var(--rust); }
-.create-form { display: flex; align-items: center; gap: 16px; margin-bottom: 34px; padding: 18px 20px; border: 1px solid rgba(255,255,255,.74); border-radius: 18px; background: rgba(255,253,248,.78); box-shadow: 0 14px 36px rgba(59,45,29,.09); }
-.create-mark { width: 43px; height: 43px; display: grid; place-items: center; flex: none; border-radius: 50%; color: #6e3a25; background: radial-gradient(circle at 35% 30%, #f1c6a4, #cf8053); box-shadow: 0 5px 13px rgba(106,59,32,.24); font-size: 23px; }
-.create-form label { flex: 1; display: grid; gap: 5px; }
-.create-form label > span { color: var(--rust-dark); }
-.create-form input { width: 100%; padding: 4px 0; border: 0; border-bottom: 1px solid var(--line); outline: 0; color: var(--ink); background: transparent; font-family: var(--serif); font-size: 18px; }
-.create-form > button { padding: 11px 18px; border: 0; border-radius: 999px; color: #f9f2e8; background: var(--ink); cursor: pointer; font-size: 12px; font-weight: 600; }
-.create-form > button:disabled { opacity: .34; cursor: not-allowed; }
-.section-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-.section-heading i { flex: 1; height: 1px; background: var(--line); }
-.section-heading b { color: var(--ink-faint); font: 10px var(--mono); }
-.case-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px 18px; }
-.case-card { min-height: 210px; display: grid; grid-template-columns: 52px 1fr; gap: 16px; padding: 28px 24px 22px; border: 1px solid rgba(91,70,44,.13); cursor: pointer; border-radius: 4px 15px 10px 5px; color: var(--ink); background: linear-gradient(115deg, rgba(255,255,255,.28), transparent 45%), #e9dfc9; box-shadow: 0 8px 22px rgba(58,43,27,.12); transition: transform .28s cubic-bezier(.22,1,.36,1), box-shadow .28s ease; position: relative; }
-.case-card:hover { transform: translateY(-6px) rotate(-.35deg); box-shadow: 0 20px 42px rgba(58,43,27,.18); }
-.folder-tab { position: absolute; top: -18px; left: 16px; padding: 6px 17px 5px; border-radius: 8px 8px 0 0; color: var(--ink-soft); background: #ddd0b6; font: 8px var(--mono); letter-spacing: .13em; }
-.case-seal { width: 48px; height: 48px; display: grid; place-items: center; border: 1px solid rgba(126,54,38,.42); border-radius: 50%; color: var(--rust-dark); font: 22px var(--serif); transform: rotate(-7deg); box-shadow: inset 0 0 0 4px rgba(182,95,62,.07); }
-.case-copy { min-width: 0; }
-.case-card h2 { margin: 7px 0; font-family: var(--serif); font-size: 23px; font-weight: 600; line-height: 1.15; }
-.case-card p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
-.case-card time { display: block; margin-top: 16px; color: var(--ink-faint); font: 9px var(--mono); }
-.open-case { position: absolute; left: 24px; bottom: 18px; color: var(--rust-dark); font-size: 11px; font-weight: 600; }
-.open-case b { margin-left: 5px; }
-.empty-archive { padding: 70px 20px; border: 1px dashed rgba(82,64,44,.25); border-radius: 16px; text-align: center; color: var(--ink-soft); }
-.empty-archive > span { color: var(--rust); font-size: 28px; }
-.empty-archive h2 { margin: 8px 0; font: 24px var(--serif); color: var(--ink); }
-.empty-archive p { margin: 0; font-size: 12px; }
-.delete-case-btn { opacity: 0; position: absolute; top: 14px; right: 14px; padding: 5px 9px; border: 1px solid rgba(159,62,53,.28); border-radius: 999px; color: var(--evidence-red); background: rgba(255,253,248,.65); cursor: pointer; font-size: 10px; transition: opacity .2s ease, background .2s ease; }
-.case-card:hover .delete-case-btn, .delete-case-btn:focus-visible { opacity: 1; }
-.delete-case-btn:hover { background: #f4ddd7; }
-@media (max-width: 850px) { .home { grid-template-columns: 1fr; } .archive-rail { display: none; } .case-list { grid-template-columns: 1fr; } .archive-main { padding: 34px 20px 60px; } }
-@media (max-width: 520px) { .create-form { align-items: stretch; flex-wrap: wrap; } .create-form label { min-width: calc(100% - 62px); } .create-form > button { width: 100%; } .header h1 { font-size: 38px; } }
+.home{--kraft:#cab17b;--light:#dbc79a;--dark:#b29760;--ease:cubic-bezier(.22,1,.36,1);min-height:calc(100vh - 36px);position:relative;isolation:isolate;background:radial-gradient(ellipse at 25% 0%,#fff3d97a,transparent 65%),linear-gradient(105deg,#e2d5b9,#c5b38e);color:#4e402a;font-family:var(--serif)}.home:before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.1;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.7' filter='url(%23n)'/%3E%3C/svg%3E")}
+button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid #9b4b3d;outline-offset:5px}button:disabled{cursor:default;opacity:.5}svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}.sitebar{padding:29px 5vw;display:flex;align-items:center;gap:26px;border-bottom:1px solid #7c6a4630}.brand{font-size:26px;letter-spacing:-1px}.brand i{display:inline-block;width:5px;height:5px;border-radius:50%;background:#9b4b3d;vertical-align:top;margin:7px 0 0 4px}.new,.logout{border:0;background:none;padding:8px 0;display:flex;align-items:center;gap:8px;font-size:15px}.new{border-bottom:1px solid #806d493d}.logout{font:11px var(--sans);color:#8b7758}.heading{max-width:1120px;margin:auto;padding:42px 35px 15px;display:flex;align-items:end;gap:16px}.heading h1{font-size:38px;font-weight:400;letter-spacing:3px;margin:0}.heading span{font:11px var(--mono);color:#907c5b;margin-bottom:7px}.archive{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:46px 38px;max-width:1120px;margin:auto;padding:48px 35px 75px;perspective:1300px}.archive:has(>.dossier:only-child){grid-template-columns:1fr;max-width:470px}.dossier{position:relative;display:block;text-align:left;border:0;background:none;padding:0;aspect-ratio:1.38;min-width:0;isolation:isolate;transform:rotate(var(--angle));transition:transform 240ms var(--ease);color:#4e402a;filter:drop-shadow(2px 10px 8px #49361522);animation:arrive 480ms var(--ease) backwards;animation-delay:calc(var(--i)*40ms)}@keyframes arrive{from{opacity:0;transform:translateY(20px) rotate(calc(var(--angle) + 4deg))}to{opacity:1;transform:rotate(var(--angle))}}
+.back{position:absolute;inset:0;background:linear-gradient(120deg,var(--light),var(--dark));border:1px solid #8b754755;border-radius:3px}.paper{position:absolute;inset:18px 15px 20px;background:#f5efde;box-shadow:0 0 3px #6c5b3733;padding:16px;color:#84735a;overflow:hidden;transition:transform 260ms var(--ease);transform:rotate(-2deg);z-index:1}.paper.second{background:#e8e8d6;transform:rotate(2deg);inset:13px 19px 18px}.paper small{font:9px var(--mono);letter-spacing:2px}.lines{display:block;height:55px;margin-top:15px;background:repeating-linear-gradient(transparent 0 13px,#b6ab9133 13px 14px)}.front{position:absolute;inset:50px 0 0;background:linear-gradient(110deg,var(--light),var(--kraft));border:1px solid #8f784650;border-radius:0 0 3px 3px;box-shadow:inset 0 2px 3px #ffe8b433,inset 0 -2px 3px #634f2320;z-index:3;transform-origin:bottom;transition:transform 260ms var(--ease)}.front:after{content:'';position:absolute;inset:8px;border:1px solid #84662c15;pointer-events:none}.flap{position:absolute;inset:0 0 auto;height:65px;background:linear-gradient(#d9c596,#b99c60);clip-path:polygon(0 0,100% 0,100% 60%,55% 100%,45% 100%,0 60%);transform-origin:top;transition:transform 260ms var(--ease);z-index:5}.cord{position:absolute;right:30px;top:40px;width:28px;height:80px;z-index:6;transition:opacity 130ms}.cord:before,.cord:after{content:'';position:absolute;width:24px;height:24px;left:2px;border-radius:50%;background:radial-gradient(circle,#8a7143 0 2px,#d4bb87 3px 9px,#917747 10px 11px,#c8aa6c 12px);box-shadow:1px 2px 2px #58441f40}.cord:after{bottom:0}.cord svg{position:absolute;inset:5px 0;width:100%;height:70px;z-index:1;stroke:#8c6240;stroke-width:1.7}.label{position:absolute;left:22px;top:26px;right:72px;z-index:4}.label small{font:9px var(--mono);letter-spacing:1.7px;color:#80704e}.name{display:block;font-size:22px;font-weight:400;margin:10px 0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.description{display:block;font-size:11px;color:#7c6847;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dossier time{position:absolute;bottom:19px;left:22px;font:9px var(--mono);color:#806a46;z-index:4}.stamp{position:absolute;bottom:21px;right:19px;z-index:4;border:2px double #a3594666;color:#9b534966;font-size:11px;padding:3px 7px;transform:rotate(-9deg);letter-spacing:1px}.empty,.notice{max-width:1050px;margin:35px auto;padding:50px 30px;text-align:center;color:#8a7859}.empty h2{font-size:25px;font-weight:400}.empty button,.notice button{border:0;background:none;color:#954c3c;padding:12px}.notice{font:14px var(--sans)}
+.archive-dialog{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;border:0;background:none;padding:25px;overflow:auto;color:#433a2a}.archive-dialog[open]{display:grid;place-items:center}.archive-dialog::backdrop{background:#25241d7d;backdrop-filter:blur(4px)}.opened{position:relative;width:min(760px,100%);background:#d0b789;padding:23px 24px 28px;box-shadow:0 20px 70px #17130880;transform:rotate(-.6deg);border-radius:3px;font-family:var(--serif);max-height:calc(100dvh - 50px);overflow:auto}.opened:before{content:'';position:absolute;inset:8px;border:1px solid #77613935;pointer-events:none}.close{position:absolute;right:35px;top:33px;width:34px;height:34px;border:0;background:none;color:#968468;z-index:2}.document{position:relative;padding:35px 37px 31px;background:#f3eddb;box-shadow:0 2px 4px #63502b20;min-height:370px}.docid{font:11px var(--mono);letter-spacing:2px;color:#9b8b70}.document h2{font-size:35px;font-weight:400;letter-spacing:2px;margin:20px 0 12px;overflow-wrap:anywhere;padding-right:35px}.rule{width:50px;height:3px;background:#9b4b3d;margin:22px 0}.summary{color:#8a7d66;line-height:1.9;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;max-width:440px}.document time{display:block;font:12px var(--mono);color:#968469;margin-top:25px}.docstamp{display:inline-block;color:#a74f4380;transform:rotate(-12deg);border:3px double;padding:6px 11px;font-size:15px;letter-spacing:3px;float:right;margin-left:15px}.actions{clear:both;display:flex;align-items:center;gap:18px;margin-top:60px;border-top:1px solid #b6a98c66;padding-top:20px}.enter{margin-left:auto;border:0;background:#8f4b3c;color:#f8edda;padding:11px 19px;font-size:14px;display:flex;align-items:center;gap:10px}.delete,.quiet{border:0;background:none;color:#a07864;font-size:12px;display:flex;align-items:center;gap:7px;padding:9px 0}.delete svg{width:15px;height:15px}.document input{display:block;width:100%;background:none;border:0;border-bottom:1px solid #b19d76;padding:15px 0;margin:25px 0 45px;font-size:22px;color:#4e402a}.error{color:#9b4b3d;font:12px var(--sans);line-height:1.6}
+@media(hover:hover) and (pointer:fine){.dossier:hover{transform:translateY(-7px) rotate(0)}.dossier:hover .paper{transform:translateY(-33px) rotate(-4deg)}.dossier:hover .paper.second{transform:translateY(-17px) rotate(3deg)}.dossier:hover .flap{transform:rotateX(145deg);z-index:0}.dossier:hover .cord{opacity:0}.dossier:hover .front{transform:perspective(700px) rotateX(-7deg)}.delete:hover{color:#9b4b3d}}
+@media(max-width:950px){.sitebar{padding:22px 30px}.heading{padding:30px 30px 10px}.archive{padding:43px 30px 55px;gap:35px 25px}.label{left:16px;right:50px}.name{font-size:19px}.description{font-size:10px}.cord{right:15px;top:38px}.dossier time{left:16px}.stamp{right:13px;font-size:9px}}
+@media(max-width:640px){.sitebar{padding:21px 20px;gap:14px;flex-wrap:wrap}.brand{font-size:23px}.new{font-size:12px}.logout{margin-left:auto}.heading{padding:30px 22px 10px}.heading h1{font-size:30px}.archive{grid-template-columns:repeat(2,minmax(0,1fr));padding:39px 22px 50px;gap:34px 20px}.dossier{aspect-ratio:1.02}.label{top:23px;left:13px;right:15px}.name{font-size:18px}.description{font-size:10px}.cord{right:12px;top:24px;scale:.8;transform-origin:top right}.front{top:45px}.flap{height:55px}.label small{font-size:8px}.dossier time{left:13px;bottom:16px;font-size:8px}.stamp{display:none}.archive-dialog{padding:16px}.opened{padding:15px;max-height:calc(100dvh - 32px)}.document{padding:30px 24px}.document h2{font-size:28px}.docstamp{font-size:12px;padding:5px}.actions{margin-top:35px;gap:10px}.enter{font-size:13px;padding:10px 13px}.close{right:25px;top:25px}.archive:has(>.dossier:only-child){max-width:370px}.archive:has(>.dossier:only-child) .dossier{aspect-ratio:1.38}}
+@media(prefers-reduced-motion:reduce){.dossier,.paper,.front,.flap,.cord{animation:none;transition:none}.dossier:hover{transform:rotate(var(--angle))}.dossier:hover .paper{transform:rotate(-2deg)}.dossier:hover .paper.second{transform:rotate(2deg)}.dossier:hover .front,.dossier:hover .flap{transform:none}.dossier:hover .cord{opacity:1}}
+
+.search-control{margin-left:auto;position:relative;flex-shrink:0;width:136px;height:44px}
+.document input:focus,.document input:focus-visible{outline:none;box-shadow:none;border-bottom-color:#9b4b3d}
+.create-card{width:min(520px,100%);padding:13px 14px 17px}
+.create-card .document{min-height:0;padding:31px 30px 27px}
+.create-card .close{right:25px;top:25px}
+.create-card h2{margin:0;font-size:28px;letter-spacing:1px;padding-right:28px}
+.create-card input{margin:29px 0 0;padding:12px 0 10px;font-size:20px;border-bottom-color:#b9aa8c}
+.create-card input::placeholder{color:#a2947d}
+.create-card .actions{border:0;padding:0;margin-top:28px;justify-content:flex-end;gap:22px}
+.create-card .enter{margin-left:0;border-radius:2px;padding:11px 16px;gap:8px;font-size:14px;box-shadow:0 2px 3px #72503816}
+.create-card .quiet{font-size:13px;color:#94826b}
+.create-card .error{margin-bottom:0}
+@media(max-width:640px){.create-card .document{padding:27px 22px 24px}.create-card h2{font-size:25px}.create-card input{font-size:18px;margin-top:25px}.create-card .close{right:21px;top:21px}.create-card .actions{margin-top:25px;gap:19px}}
+.search-trigger{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:100%;border:0;background:none;color:#75654a;font-size:15px;transition:color 160ms,transform 160ms var(--ease)}
+.search-trigger svg{width:21px;height:21px;transition:transform 180ms var(--ease)}
+.search-control:has(.search-sheet) .search-trigger{opacity:0;pointer-events:none}
+.search-instant .search-reveal-enter-active,.search-instant .search-reveal-leave-active{transition:none}
+.search-sheet{position:absolute;z-index:4;right:0;top:0;width:285px;height:44px;display:flex;align-items:center;gap:11px;padding:0 11px 0 15px;background:#f4eddc;border:1px solid #a18d663b;border-radius:3px;box-shadow:0 3px 9px #69502b0d,inset 0 1px #fff8;transform-origin:right center;color:#8a795e}
+.search-sheet input{min-width:0;flex:1;width:100%;height:100%;padding:0;border:0;background:none;font:13px var(--sans);color:#584b36;outline:none}
+.search-sheet input::-webkit-search-cancel-button{display:none}
+.search-sheet:focus-within{border-color:#a18d6670;box-shadow:0 3px 9px #69502b12,inset 0 1px #fff8}
+.search-sheet input::placeholder{color:#a2947d}
+.search-clear{width:28px;height:32px;display:grid;place-items:center;border:0;background:none;color:#a2947d;flex-shrink:0;padding:4px}
+.search-clear svg{width:15px;height:15px}
+.search-reveal-enter-active,.search-reveal-leave-active{transition:transform 190ms var(--ease),opacity 160ms ease}
+.search-reveal-enter-from,.search-reveal-leave-to{transform:translateX(8px) scale(.97);opacity:0}
+.sitebar .new{position:relative;isolation:isolate;gap:10px;height:44px;padding:0 19px;border:1px solid #a9946a50;border-radius:2px;background:linear-gradient(115deg,#f5edda,#e9dcbf);color:#6d5034;font-size:15px;box-shadow:0 3px 6px #73583213,inset 0 1px #fff8;transition:transform 180ms var(--ease),box-shadow 180ms ease,color 160ms}
+.sitebar .new:before{content:'';position:absolute;inset:4px -3px -4px 3px;background:#d7c59f;border:1px solid #a9946a40;z-index:-2;border-radius:2px;transform:rotate(1.8deg);transition:transform 180ms var(--ease)}
+.sitebar .new:after{content:'';position:absolute;right:0;top:0;width:8px;height:8px;background:linear-gradient(45deg,#d9c9a5 49%,#e8dcbf 50%);box-shadow:-1px 1px 1px #87704b15}
+.sitebar .new:active,.search-trigger:active{transform:translateY(1px) scale(.98)}
+@media(hover:hover) and (pointer:fine){.search-trigger:hover{color:#984e3c}.search-trigger:hover svg{transform:rotate(-9deg)}.sitebar .new:hover{transform:translateY(-2px);box-shadow:0 6px 10px #73583220;color:#904d38}.sitebar .new:hover:before{transform:translateY(2px) rotate(3deg)}.search-clear:hover{color:#984e3c}}
+@media(max-width:640px){.search-control{width:109px}.search-trigger{font-size:13px;gap:7px}.sitebar .new{font-size:13px;padding:0 12px;gap:8px}.search-sheet{width:236px}}
+@media(max-width:380px){.sitebar{gap:10px;padding:18px 16px}.brand{font-size:21px}.search-control{width:96px}.sitebar .new{padding:0 9px}}
+@media(prefers-reduced-motion:reduce){.search-trigger,.search-trigger svg,.search-reveal-enter-active,.search-reveal-leave-active,.sitebar .new,.sitebar .new:before{transition:none}.search-reveal-enter-from,.search-reveal-leave-to{transform:none}.sitebar .new:hover,.search-trigger:hover svg{transform:none}}
 </style>

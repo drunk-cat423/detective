@@ -25,6 +25,7 @@ async def create_event(
     new_event = TimelineEvent(
         case_id=case_id,
         event_time=event.event_time,
+        title=event.title.strip(),
         description=event.description,
         source=event.source,
         sort_order=max_order + 1,
