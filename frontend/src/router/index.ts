@@ -29,27 +29,32 @@ const router = createRouter({
   routes,
 })
 
-// 路由守卫：检查登录状态
+// 每次打开页面重新读取服务配置，避免旧的本地缓存保留登录要求。
+let authStatus: Promise<boolean> | undefined
+
 router.beforeEach(async (to, _from, next) => {
+  if (!authStatus) {
+    authStatus = (async () => {
+      try {
+        const res = await fetch('/api/auth/status')
+        if (!res.ok) throw new Error('无法读取认证配置')
+        const data = await res.json()
+        const enabled = data.enabled === true
+        localStorage.setItem('auth_enabled', String(enabled))
+        return enabled
+      } catch {
+        return localStorage.getItem('auth_enabled') === 'true'
+      }
+    })()
+  }
+
+  const authEnabled = await authStatus
+
   if (to.name === 'Login') {
-    return next()
+    return authEnabled ? next() : next({ name: 'Home', replace: true })
   }
 
-  // 先检查 auth 是否开启（通过 localStorage 缓存结果）
-  let authEnabled = localStorage.getItem('auth_enabled')
-  if (authEnabled === null) {
-    try {
-      const res = await fetch('/api/auth/status')
-      const data = await res.json()
-      authEnabled = String(data.enabled)
-      localStorage.setItem('auth_enabled', authEnabled)
-    } catch {
-      authEnabled = 'false'
-      localStorage.setItem('auth_enabled', 'false')
-    }
-  }
-
-  if (authEnabled === 'true') {
+  if (authEnabled) {
     const token = localStorage.getItem('auth_token')
     if (!token) {
       return next({ name: 'Login' })
