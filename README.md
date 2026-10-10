@@ -6,13 +6,38 @@
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | Vue 3 + Vite + TypeScript + Pinia + Vue Router + @vue-flow/core + Axios + marked |
+| 前端框架与构建 | Vue 3 + TypeScript + Vite + Vue Router |
+| 前端渲染与交互 | 自写 DOM + SVG 调查墙、CSS 3D、Canvas 2D、Pointer Events、Web Animations API、Vue Transition |
+| 前端数据与文本 | Vue Composition API（ref / computed / composables）、Axios、fetch + ReadableStream（SSE）、marked + DOMPurify |
 | 后端 | FastAPI (异步) + Pydantic V2 + SQLAlchemy 2.0 (异步) + MySQL 8.0 |
 | AI 模型 | DeepSeek API（deepseek-v4-flash，对话）、SiliconFlow BAAI/bge-m3（向量化） |
 | Agent 框架 | LangChain + langchain-openai（ChatOpenAI 兼容客户端）+ 原生 MCP SDK（已禁用） |
 | 向量数据库 | Chroma（持久化存储） |
 | 重排序 | SiliconFlow BAAI/bge-reranker-v2-m3（Cross-Encoder 精排，API 调用） |
 | 开发工具 | PyCharm (后端) + VS Code (前端) + Navicat (数据库) |
+
+### 前端技术与对应效果
+
+当前界面以 Vue 组件组织页面，通过浏览器原生图形和动画能力实现档案袋、纸张、图钉和线绳的视觉效果。立体表现属于 CSS 透视与材质模拟（2.5D）；没有引入 Three.js、WebGL 或其他 3D 引擎。
+
+| 技术 | 对应效果 | 主要实现 |
+|------|----------|----------|
+| CSS 3D：perspective、rotateX / rotateY / rotateZ | 首页档案袋斜向排列；两侧档案缩小、倾斜；悬停时封面向外翻、内页抽出 | `views/SpatialHome.vue`、`styles/spatial-home.css` |
+| Web Animations API（Element.animate）、CSS 过渡、Vue Transition | 进入案件时档案上移并淡出；弹窗纸张浮起；线索卡从原位置展开到中央编辑面板；侧栏分页与时间线展开 | `views/SpatialHome.vue`、`views/CaseDetail.vue`、`components/sidebar/SidePanel.vue` |
+| Pointer Events + 自写坐标计算 | 首页鼠标/触摸连续拖动翻阅、松手吸附；调查墙卡片拖动、背景平移、围绕鼠标位置滚轮缩放和自动居中 | `views/SpatialHome.vue`、`components/canvas/NoteCanvas.vue` |
+| SVG + 三次贝塞尔曲线 | 图钉之间的红线按距离模拟下垂，叠加阴影和高光；移动卡片时连线同步更新；双击红线编辑备注 | `components/canvas/ThreadEdge.vue`、`utils/boardGeometry.ts` |
+| Canvas 2D 程序生成纹理 | 绘制亚麻布背景的纤维、布结、针孔和染色变化，导出图片后缓存使用 | `utils/linenTexture.ts` |
+| CSS clip-path、渐变、阴影、滤镜与 SVG 噪声 | 撕边纸、备忘、索引卡、票据、剪报和人物档案的材质；图钉高光、纸张浮起、档案封面颗粒与折痕 | `components/NoteNode.vue`、`components/canvas/CardEditorOverlay.vue`、`styles/spatial-home.css` |
+
+以上前端实现路径均相对 `frontend/src/`。动画尊重系统的 `prefers-reduced-motion` 设置；首页键盘操作也会跳过相关过渡。
+
+### 调查墙已从 Vue Flow 改为自写 DOM + SVG
+
+`NoteCanvas.vue` 使用普通 DOM 元素渲染卡片，使用 SVG 的 `ThreadEdge.vue` 渲染关联线。卡片与线条共用一个二维坐标空间，通过 `camera = { x, y, zoom }` 和 CSS `translate3d(x, y, 0) scale(zoom)` 完成平移、缩放；这里的 `translate3d` 不表示调查墙具有三维场景或自由旋转相机。
+
+`useNotes.ts` 管理节点/连线数据和 API 持久化，`boardGeometry.ts` 计算卡片尺寸与图钉锚点。牵线操作为“点击源卡片图钉，再点击目标卡片”，不再使用 Vue Flow 的拖拽 Handle。
+
+Vue Flow 与 Pinia 的依赖和相关旧代码已移除，包括旧首页、旧编辑 Tab、Pinia store、Vue Flow 视口接口、Handle 字段与连线样式配置。当前首页为 `SpatialHome.vue`，路由页面使用 Vue 组件状态与 composables；调查墙的视口完全由 `NoteCanvas.vue` 管理。
 
 ## 目录结构
 
@@ -21,12 +46,22 @@ detective-assistant/
 ├── frontend/                # Vue 3 项目
 │   ├── src/
 │   │   ├── views/
-│   │   │   ├── HomePage.vue       # 案件管理首页
-│   │   │   └── CaseDetail.vue     # 案件详情（便签墙+连线+时间轴+侧边栏+Agent对话+文档上传+已知信息）
+│   │   │   ├── SpatialHome.vue    # 当前首页：立体档案袋、连续翻阅、案件索引
+│   │   │   └── CaseDetail.vue     # 案件详情、数据组装与卡片编辑过渡
 │   │   ├── components/
-│   │   │   └── NoteNode.vue       # 自定义便利贴节点
+│   │   │   ├── NoteNode.vue       # DOM 纸张卡片、图钉与搜索高亮
+│   │   │   ├── canvas/
+│   │   │   │   ├── NoteCanvas.vue        # 自写 DOM + SVG 调查墙及二维视口
+│   │   │   │   ├── ThreadEdge.vue        # SVG 线绳、备注及交互命中区域
+│   │   │   │   └── CardEditorOverlay.vue # 独立纸张编辑面板
+│   │   │   ├── sidebar/           # 推理 / 文档 / 事实档案页
+│   │   │   └── timeline/          # 时间节点与浮动事件卡片
+│   │   ├── composables/           # 线索、连线、对话等状态与 API 操作
+│   │   ├── utils/
+│   │   │   ├── boardGeometry.ts   # 卡片尺寸与图钉锚点
+│   │   │   └── linenTexture.ts    # Canvas 2D 生成并缓存亚麻布纹理
+│   │   ├── styles/spatial-home.css # 当前首页的材质与 CSS 3D 样式
 │   │   ├── api/index.ts           # axios 封装 + 所有 API 接口
-│   │   ├── stores/                # Pinia 状态管理
 │   │   ├── router/index.ts        # 路由配置
 │   │   ├── App.vue
 │   │   └── main.ts
@@ -35,7 +70,7 @@ detective-assistant/
 │
 ├── backend/                 # FastAPI 项目
 │   ├── app/
-│   │   ├── main.py                # FastAPI 入口（lifespan 预加载模型）
+│   │   ├── main.py                # FastAPI 入口与路由注册
 │   │   ├── config.py              # 环境变量配置（Pydantic Settings）
 │   │   ├── database.py            # 异步数据库连接（aiomysql）
 │   │   ├── models/                # SQLAlchemy 模型（9 张表）
@@ -83,23 +118,26 @@ detective-assistant/
 ## 核心功能
 
 ### 1. 案件管理
-- 新建案件、案件列表展示
-- 点击案件卡片进入详情页，支持删除案件
+- 通过立体档案袋浏览案件，支持连续拖动、横向滚轮、左右按钮和方向键翻阅
+- 双击档案进入详情；键盘激活可直接进入；案件索引支持名称/摘要搜索
+- 新建案件、管理与删除案件
 
-### 2. 便签墙（Vue Flow 画布）
-- 添加线索/嫌疑人便签，自由拖拽移动
-- 嫌疑人便签额外显示 **姓名**（可编辑）
-- 便签位置、尺寸、颜色自动保存
-- 便签间拖拽连线（上下两个美化 Handle）
-- 连线自动保存，删除便签时自动清理关联连线
-- 右下角按钮：一键回到画布中心点
+### 2. 调查墙（自写 DOM + SVG）
+
+- 从“登记材料”选择线索或嫌疑人，再点击调查墙放置卡片；卡片可自由拖动
+- 卡片采用不同纸张外形；嫌疑人显示可编辑的 **姓名**
+- 拖动结束后保存位置；双击卡片打开独立编辑面板，保存内容、姓名和颜色
+- 点击源卡片图钉后，再点击目标卡片建立关联；SVG 红线随两端卡片移动更新
+- 双击红线编辑备注或删除关联；删除卡片时同步清理关联线
+- 滚轮围绕鼠标位置缩放，拖动背景平移，左上方按钮重新居中适配全部卡片
 
 ### 3. 右侧工具面板
-- 可折叠/展开（宽度 380px）
-- **编辑** / **对话** / **文档** / **已知信息** 四个 Tab 切换
-- 编辑 Tab：修改内容、切换预设颜色（8 种）、修改嫌疑人姓名
-- 已知信息 Tab：录入关键信息，供 Agent 推理时调用
-- 文档 Tab：支持拖拽或点击上传 `.txt` 文件，显示已上传文档列表
+
+- 可折叠/展开的案件档案侧栏，包含 **推理** / **文档** / **事实** 三个分区
+- 推理分区：Agent 流式对话，Markdown 经 DOMPurify 清理后显示
+- 事实分区：录入已知信息，供 Agent 推理时调用
+- 文档分区：拖拽或点击上传 `.txt` 文件，查看与删除已上传文档
+- 线索编辑使用独立的卡片编辑面板，不再是侧栏中的编辑 Tab
 
 ### 4. 文档上传与向量化（RAG）
 - 前端：文档 Tab 内提供文件拖拽/选择上传组件，支持 `.txt` 文件（UTF-8 编码）
@@ -153,10 +191,9 @@ detective-assistant/
 
 ### 9. 时间线（可视化时间轴）
 - 年-月-日-时-分选择器添加事件，输入自动修正
-- 横轴时间轴，圆点标记事件，按时间自动分布（智能间距防重叠）
-- 悬停显示详情框，移开消失；点击锁定，可同时锁定多个
-- 左右两侧智能对齐，不超出边界
-- 圆点下方显示月/日简写
+- 时间节点按日期分组，展示时间与事件标题
+- 点击节点展开或收起事件卡片，可同时展开多个；卡片按时间排序并以 SVG 线绳关联
+- 浮动卡片通过 Vue Teleport 挂到 body，支持横向查阅、单独关闭、全部关闭和删除事件
 
 ## 环境准备
 
@@ -168,6 +205,8 @@ detective-assistant/
 ```bash
 pip install -r requirements.txt
 ```
+
+依赖清单显式包含 `sqlalchemy[asyncio]` 和 `python-multipart`：前者安装异步数据库操作需要的 `greenlet`，后者提供文件上传所需的表单解析，避免服务启动或首次数据库请求时缺少依赖。
 
 **注意**：需降级 NumPy 至 1.26.4 以兼容 Chroma：
 
@@ -195,15 +234,17 @@ uvicorn app.main:app --reload --port 8001
 
 ### 前端
 
-1. 安装 Node.js 18+
+1. 使用满足 Vite 引擎要求的 Node.js：`^20.19.0 || >=22.12.0`；当前本机使用 Node.js 24.15.0
 2. 进入 `frontend/` 目录：
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
 3. 访问：`http://localhost:5173`
+
+4. 修改后运行 `npm run build`，执行 TypeScript 检查与生产构建。开发架构说明见 [CLAUDE.md](CLAUDE.md)。当前 Windows 工作区的 Python 运行时、启动命令和联调状态另记录在仓库外的 `D:\personal project\LOCAL-DEVELOPMENT.md`。
 
 ## 快速启动清单
 
@@ -265,12 +306,12 @@ npm run dev
 
 ## 已知注意事项
 
-1. **端口占用**：如 8001 被占用，换端口启动，前端同步修改 `api/index.ts` 的 `baseURL`
+1. **端口占用**：后端默认 8001；换端口时修改 `frontend/vite.config.ts` 的代理 target。前端请求地址保持 `/api`，生产环境另同步反向代理配置
 2. **Python 缓存**：修改 Model 后需删除 `__pycache__` 文件夹并重启
 3. **NumPy 版本**：必须固定为 1.26.4，否则 Chroma 报错 `np.float_` 不存在
 4. **数据库迁移**：修改 SQLAlchemy 模型后执行 `alembic revision --autogenerate -m "描述"` 和 `alembic upgrade head`
-5. **Vue Flow 使用**：父组件中禁用 `useVueFlow()`，改用 `v-model` + 数组直接操作
-6. **连线 Handle**：必须保留 `sourceHandle` 和 `targetHandle`，否则多方向连线会消失
+5. **调查墙坐标**：DOM 卡片和 SVG 红线共用二维世界坐标；拖动或放置时须将屏幕坐标按视口平移和 zoom 换算，不能直接保存 clientX / clientY
+6. **图钉与关联线**：通过 `boardGeometry.ts` 统一计算锚点；关联线按 source / target 节点 ID 渲染和去重，后端仍保存 from_note_id / to_note_id。无需 Vue Flow Handle 字段
 7. **时间轴排序**：必须用 `parseEventTime` 数值比较，不能直接用字符串排序
 8. **嫌疑人姓名**：涉及 `NoteCreate`、`NoteUpdate`、`NoteOut` 三个 Schema 及数据库列，缺一不可
 9. **流式对话会话安全**：`agent_chat_stream` 内部用独立 `async_session()` 保存助手消息

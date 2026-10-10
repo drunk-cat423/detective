@@ -30,7 +30,6 @@ export function useNotes(caseId: number) {
   const nodes = ref<any[]>([])
   const edges = ref<any[]>([])
   const selectedNode = ref<any | null>(null)
-  const vueFlowRef = ref<any>(null)
 
   const presetColors = [
     '#F4EDDC', '#F7F3E8', '#F6F4EC', '#ECD3CD',
@@ -48,8 +47,6 @@ export function useNotes(caseId: number) {
     '#F5F5F5': '#F7F3E8',
   }
 
-  const centerPoint = { x: 400, y: 300 }
-
   async function loadNotes() {
     try {
       const res = await getNotes(caseId)
@@ -59,7 +56,6 @@ export function useNotes(caseId: number) {
         const { width, height } = cardDimensions(cardStyle)
         return {
           id: String(n.id),
-          type: 'note',
           position: { x: n.pos_x, y: n.pos_y },
           data: {
             content: n.content,
@@ -84,8 +80,6 @@ export function useNotes(caseId: number) {
           id: String(c.id),
           source: String(c.from_note_id),
           target: String(c.to_note_id),
-          sourceHandle: 'thread-source-pin',
-          targetHandle: 'thread-target-pin',
           label: c.label,
         }
       })
@@ -115,7 +109,6 @@ export function useNotes(caseId: number) {
       const { width, height } = cardDimensions(cardStyle)
       nodes.value.push({
         id: String(res.data.id),
-        type: 'note',
         position: { x: res.data.pos_x, y: res.data.pos_y },
         data: {
           content: res.data.content,
@@ -133,12 +126,9 @@ export function useNotes(caseId: number) {
     }
   }
 
-  async function onConnect(connection: any) {
-    const { source, target, sourceHandle, targetHandle } = connection
-    if (edges.value.some((e: any) =>
-      e.source === source && e.target === target &&
-      e.sourceHandle === sourceHandle && e.targetHandle === targetHandle
-    )) return
+  async function onConnect(connection: { source: string; target: string }) {
+    const { source, target } = connection
+    if (edges.value.some(e => e.source === source && e.target === target)) return
 
     if (source === target) return
 
@@ -152,8 +142,6 @@ export function useNotes(caseId: number) {
         id: String(res.data.id),
         source,
         target,
-        sourceHandle: sourceHandle ?? undefined,
-        targetHandle: targetHandle ?? undefined,
         label: '',
       })
     } catch (err) {
@@ -177,8 +165,6 @@ export function useNotes(caseId: number) {
       }
     }
   }
-
-  function onEdgesChange() {}
 
   function selectNode({ node }: { node: any }) {
     selectedNode.value = node
@@ -224,33 +210,10 @@ export function useNotes(caseId: number) {
     }
   }
 
-  function goToCenter(vueFlowInstance?: any) {
-    const instance = vueFlowInstance || vueFlowRef.value
-    instance?.setCenter(centerPoint.x, centerPoint.y, { zoom: 1 })
-  }
-
   // 连线备注相关
   const editingEdgeForLabel = ref<any>(null)
   const editEdgeLabelText = ref('')
   const editEdgePosition = ref({ x: 0, y: 0 })
-  const edgeEditInput = ref<HTMLInputElement | null>(null)
-
-  const defaultEdgeOptions = {
-    labelStyle: {
-      fontSize: '18px',
-      fontWeight: 'bold',
-      fill: '#333',
-    },
-    labelBgStyle: {
-      fill: 'transparent',
-    },
-    labelBgPadding: [4, 4] as [number, number],
-    labelBgBorderRadius: 4,
-    style: {
-      stroke: '#b1b1b7',
-      strokeWidth: 2,
-    },
-  }
 
   function onEdgeDoubleClick(params: any) {
     const { edge, event } = params
@@ -308,25 +271,19 @@ export function useNotes(caseId: number) {
     nodes,
     edges,
     selectedNode,
-    vueFlowRef,
     presetColors,
-    centerPoint,
     editingEdgeForLabel,
     editEdgeLabelText,
     editEdgePosition,
-    edgeEditInput,
-    defaultEdgeOptions,
     loadNotes,
     loadConnections,
     addNote,
     onConnect,
     onNodesChange,
-    onEdgesChange,
     selectNode,
     deselectNode,
     saveSelectedNode,
     deleteSelectedNode,
-    goToCenter,
     onEdgeDoubleClick,
     saveEdgeLabelEdit,
     deleteCurrentEdge,

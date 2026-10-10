@@ -43,24 +43,21 @@
       <!-- 便签墙画布 -->
       <NoteCanvas
         v-model:nodes="nodes"
-        v-model:edges="edges"
+        :edges="edges"
         :editing-edge-for-label="editingEdgeForLabel"
         v-model:edit-edge-label-text="editEdgeLabelText"
         :edit-edge-position="editEdgePosition"
-        :default-edge-options="defaultEdgeOptions"
         :search-query="searchQuery"
         :panel-open="panelOpen"
         @select-node="handleSelectNode"
         @open-node-editor="handleOpenNodeEditor"
         @deselect-node="deselectNode"
-        @go-to-center="handleGoToCenter"
         @on-connect="onConnect"
         @on-nodes-change="onNodesChange"
         @on-edge-double-click="onEdgeDoubleClick"
         @save-edge-label-edit="saveEdgeLabelEdit"
         @delete-current-edge="deleteCurrentEdge"
         @add-note="handleAddNote"
-        @delete-node="handleDeleteNode"
       />
 
       <!-- 右侧面板 -->
@@ -136,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 
 import TimelineBar from '@/components/timeline/TimelineBar.vue'
 import TimelinePanel from '@/components/timeline/TimelinePanel.vue'
@@ -174,10 +171,10 @@ const editorOverlayStyle = computed(() => ({
 // Notes composable
 const {
   nodes, edges, selectedNode, presetColors,
-  editingEdgeForLabel, editEdgeLabelText, editEdgePosition, defaultEdgeOptions,
+  editingEdgeForLabel, editEdgeLabelText, editEdgePosition,
   loadNotes, loadConnections, addNote, onConnect, onNodesChange,
   selectNode, deselectNode, saveSelectedNode, deleteSelectedNode,
-  goToCenter, onEdgeDoubleClick, saveEdgeLabelEdit, deleteCurrentEdge,
+  onEdgeDoubleClick, saveEdgeLabelEdit, deleteCurrentEdge,
 } = useNotes(caseId)
 
 // Timeline composable
@@ -268,10 +265,6 @@ async function handleEditorDelete() {
   }
 }
 
-function handleGoToCenter(vueFlowInstance: any) {
-  goToCenter(vueFlowInstance)
-}
-
 function showToast(message: string) {
   toastMessage.value = message
   if (toastTimer) clearTimeout(toastTimer)
@@ -283,13 +276,6 @@ async function handleAddNote(payload: { type: string; position: { x: number; y: 
   if (created) showToast(payload.type === 'clue' ? '线索已固定到调查墙。' : '嫌疑人档案已固定到调查墙。')
 }
 
-async function handleDeleteNode(node: any) {
-  selectNode({ node })
-  await nextTick()
-  const deleted = await deleteSelectedNode()
-  if (deleted) showToast('卡片与关联线绳已移除。')
-}
-
 onMounted(async () => {
   await loadNotes()
   await loadConnections()
@@ -299,9 +285,8 @@ onMounted(async () => {
     loadDocuments(),
     loadKnownInfos(),
   ])
-  await nextTick()
-  goToCenter()
 })
+onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer) })
 </script>
 
 <style scoped>

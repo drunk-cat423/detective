@@ -113,7 +113,6 @@ const props = defineProps<{
   editingEdgeForLabel: any
   editEdgeLabelText: string
   editEdgePosition: { x: number; y: number }
-  defaultEdgeOptions?: any
   selectedNodeId?: string
   searchQuery: string
   panelOpen: boolean
@@ -121,19 +120,16 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:nodes': [nodes: any[]]
-  'update:edges': [edges: any[]]
   'update:editEdgeLabelText': [value: string]
   'select-node': [node: any]
   'open-node-editor': [payload: { node: any; rect: { left: number; top: number; width: number; height: number } }]
   'deselect-node': []
-  'go-to-center': [controller: any]
-  'on-connect': [connection: any]
+  'on-connect': [connection: { source: string; target: string }]
   'on-nodes-change': [changes: any[]]
   'on-edge-double-click': [params: any]
   'save-edge-label-edit': []
   'delete-current-edge': []
   'add-note': [payload: { type: string; position: { x: number; y: number } }]
-  'delete-node': [node: any]
 }>()
 
 const viewportRef = ref<HTMLElement | null>(null)
@@ -142,7 +138,6 @@ const isCentering = ref(false)
 let centerAnimationTimer: ReturnType<typeof setTimeout> | undefined
 const addMenuOpen = ref(false)
 const placingType = ref<'clue' | 'suspect' | null>(null)
-const menuNodeId = ref<string | null>(null)
 const linkingSourceId = ref<string | null>(null)
 const camera = ref({ x: 80, y: 70, zoom: 1 })
 const panState = ref<null | { startX: number; startY: number; cameraX: number; cameraY: number; moved: boolean }>(null)
@@ -153,7 +148,6 @@ let initialFitComplete = false
 
 provide('noteSearchQuery', toRef(props, 'searchQuery'))
 provide('selectedNodeId', toRef(props, 'selectedNodeId'))
-provide('menuNodeId', menuNodeId)
 provide('linkingSourceId', linkingSourceId)
 provide('linkedPins', computed(() => {
   const pins = new Set<string>()
@@ -326,19 +320,14 @@ function handleCardClick(node: any) {
     emit('on-connect', {
       source: linkingSourceId.value,
       target: String(node.id),
-      sourceHandle: 'thread-source-pin',
-      targetHandle: 'thread-target-pin',
     })
     linkingSourceId.value = null
-    menuNodeId.value = null
     return
   }
-  menuNodeId.value = null
 }
 
 function handleCardDoubleClick(node: any, event: MouseEvent) {
   if (linkingSourceId.value || placingType.value || suppressClickId.value === String(node.id)) return
-  menuNodeId.value = null
   emit('select-node', node)
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
   emit('open-node-editor', {
@@ -356,7 +345,6 @@ function handlePaneClick(event: MouseEvent) {
   if (target.closest('.board-card,.thread-hitbox,.canvas-heading,.add-note-dock,.center-btn,.placement-hint,.edge-edit-toolbar')) return
   if (!placingType.value) {
     emit('deselect-node')
-    menuNodeId.value = null
     linkingSourceId.value = null
     return
   }
@@ -368,7 +356,6 @@ function runNodeAction(action: 'link', nodeId: string) {
   const node = props.nodes.find(item => String(item.id) === String(nodeId))
   if (!node) return
   if (action === 'link') {
-    menuNodeId.value = null
     linkingSourceId.value = String(node.id)
   }
 }
@@ -415,7 +402,6 @@ function cancelActiveMode() {
   addMenuOpen.value = false
   placingType.value = null
   linkingSourceId.value = null
-  menuNodeId.value = null
 }
 
 function onShortcut(event: KeyboardEvent) {

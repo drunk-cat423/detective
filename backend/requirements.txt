@@ -2,7 +2,8 @@ fastapi==0.111.0
 uvicorn[standard]==0.29.0
 pydantic~=2.13.4
 pydantic-settings>=2.5.2
-sqlalchemy==2.0.30
+sqlalchemy[asyncio]==2.0.30
+python-multipart==0.0.29  # 文件上传直接依赖
 aiomysql==0.2.0
 alembic==1.13.1
 python-dotenv==1.0.1
